@@ -381,20 +381,20 @@
             list-style: none;
             padding: 0; margin: 0;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 10px;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 14px;
         }
         .rm-feature {
             display: flex;
             align-items: flex-start;
-            gap: 10px;
-            padding: 10px 12px;
+            gap: 12px;
+            padding: 14px 16px;
             border-radius: 10px;
             background: rgba(255,255,255,0.03);
             border: 1px solid rgba(255,255,255,0.06);
-            font-size: 0.88rem;
+            font-size: 0.9rem;
             color: var(--text-secondary);
-            line-height: 1.4;
+            line-height: 1.55;
             transition: background 0.2s, border-color 0.2s;
         }
         .rm-feature:hover {
@@ -406,7 +406,27 @@
             font-size: 1.1rem;
             line-height: 1;
             flex-shrink: 0;
-            margin-top: 1px;
+            margin-top: 2px;
+        }
+        .rm-feature-body {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .rm-feature-title {
+            display: block;
+        }
+        .rm-feature-desc {
+            margin: 0;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            font-weight: normal;
+        }
+        .rm-feature:hover .rm-feature-desc {
+            color: var(--text-primary);
         }
 
         /* ── Feature request placeholder ── */
@@ -415,6 +435,15 @@
             border-color: rgba(255,255,255,0.12);
             color: var(--text-muted);
             font-style: italic;
+        }
+        .rm-feature--request a {
+            color: var(--accent-primary);
+            text-decoration: none;
+            font-style: normal;
+            font-weight: 600;
+        }
+        .rm-feature--request a:hover {
+            text-decoration: underline;
         }
 
         /* ── TBC mystery block ── */
@@ -544,7 +573,7 @@
                     <div class="rm-era-card">
                         <div class="rm-card-header">
                             <div class="rm-card-title-group">
-                                <span class="rm-card-icon">⚙️</span>
+                                <span class="rm-card-icon">🔧</span>
                                 <div>
                                     <div class="rm-card-label">In Progress</div>
                                     <div class="rm-card-sublabel">Currently being built</div>
@@ -555,12 +584,10 @@
                             </span>
                         </div>
                         <ul class="rm-features">
-                            <li class="rm-feature"><span class="rm-feature-icon">📧</span>Email login (no Google required)</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🗂️</span>More campaigns</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">👥</span>More meeples per campaign</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">📸</span>Screenshots of games played</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">📱</span>Instagram promo &amp; social presence</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🏅</span>Unlock achievements</li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🏅</span><div class="rm-feature-body"><strong class="rm-feature-title">Unlock achievements</strong><span class="rm-feature-desc">Earn badges and milestones for wins, streaks, and game-specific feats</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">💬</span><div class="rm-feature-body"><strong class="rm-feature-title">Message boards</strong><span class="rm-feature-desc">Discuss campaigns, organise game nights, and share strategies with your playgroup</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🎲</span><div class="rm-feature-body"><strong class="rm-feature-title">BoardGameGeek integration</strong><span class="rm-feature-desc">Auto-import game details, artwork, and metadata from BGG when adding games</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">👑</span><div class="rm-feature-body"><strong class="rm-feature-title">Unlock more classes</strong><span class="rm-feature-desc">New membership tiers beyond Commoner, Noble, and Royal</span></div></li>
                         </ul>
                     </div>
                 </div>
@@ -582,14 +609,12 @@
                             </span>
                         </div>
                         <ul class="rm-features">
-                            <li class="rm-feature"><span class="rm-feature-icon">🗂️</span>Unlimited campaigns</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">👤</span>Expanded meeple profiles</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">👥</span>Even MORE meeples per campaign</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">💾</span>Export &amp; import data</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🏅</span>Tiered memberships</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">💳</span>Payments via Stripe</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🦊</span>Crypto payments via MetaMask</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🎬</span>Video recording of games played</li>
+                            <li class="rm-feature"><span class="rm-feature-icon">📅</span><div class="rm-feature-body"><strong class="rm-feature-title">Eras</strong><span class="rm-feature-desc">Split campaign history into seasons or chapters (e.g. "Spring 2026", "Championship Run")</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🎫</span><div class="rm-feature-body"><strong class="rm-feature-title">Party Invites</strong><span class="rm-feature-desc">Send direct invites to friends to join your campaign</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🌍</span><div class="rm-feature-body"><strong class="rm-feature-title">Global leaderboard</strong><span class="rm-feature-desc">See how your meeples rank across all Scorekeeper campaigns</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">👥</span><div class="rm-feature-body"><strong class="rm-feature-title">Friends list</strong><span class="rm-feature-desc">Add pals and quickly invite them to campaigns</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🏷️</span><div class="rm-feature-body"><strong class="rm-feature-title">Meeple tags</strong><span class="rm-feature-desc">Label meeples (e.g. "Host", "Newbie", "Champion") for fun and filtering</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🍺</span><div class="rm-feature-body"><strong class="rm-feature-title">Taverns</strong><span class="rm-feature-desc">Campaigners post internal short messages; a lightweight chat for your playgroup</span></div></li>
                         </ul>
                     </div>
                 </div>
@@ -615,12 +640,12 @@
                             <p style="margin-bottom: 16px;">We're not promising anything… but wouldn't these be awesome? 👀</p>
                         </div>
                         <ul class="rm-features" style="opacity: 0.6;">
-                            <li class="rm-feature"><span class="rm-feature-icon">📡</span>Live streaming of game nights</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">💬</span>Live campaign chat</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🏆</span>Prized competitions</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🤝</span>Sponsorships</li>
-                            <li class="rm-feature"><span class="rm-feature-icon">🏢</span>Corporate engagement &amp; events</li>
-                            <li class="rm-feature rm-feature--request"><span class="rm-feature-icon">💡</span>&lt;Your Feature Request Here&gt;</li>
+                            <li class="rm-feature"><span class="rm-feature-icon">📡</span><div class="rm-feature-body"><strong class="rm-feature-title">Live streaming</strong><span class="rm-feature-desc">Stream your board game sessions to friends or the community</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">💬</span><div class="rm-feature-body"><strong class="rm-feature-title">Live campaign chat</strong><span class="rm-feature-desc">Real-time chat within a campaign</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🏆</span><div class="rm-feature-body"><strong class="rm-feature-title">Prized competitions</strong><span class="rm-feature-desc">Run contests with rewards for top performers</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🤝</span><div class="rm-feature-body"><strong class="rm-feature-title">Sponsorships</strong><span class="rm-feature-desc">Partner with publishers, cafés, or venues</span></div></li>
+                            <li class="rm-feature"><span class="rm-feature-icon">🏢</span><div class="rm-feature-body"><strong class="rm-feature-title">Corporate engagement &amp; events</strong><span class="rm-feature-desc">Tools for team-building and corporate game nights</span></div></li>
+                            <li class="rm-feature rm-feature--request"><span class="rm-feature-icon">💡</span><div class="rm-feature-body">Got an idea? <a href="contact.html">Send us your feature request</a></div></li>
                         </ul>
                     </div>
                 </div>
