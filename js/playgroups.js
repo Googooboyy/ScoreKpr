@@ -148,7 +148,7 @@ function formatLine2(travellers, tier1Count, tier2Count, tier3Count, allowedTier
     return 'There are currently ' + travellerLabel + ' and an active party of ' + breakdown.total + ' ' + meepleLabel + ' (' + breakdown.phrase + ').';
 }
 
-async function updatePlaygroupCountBadge() {
+export async function updatePlaygroupCountBadge() {
     const tierPill = document.getElementById('planPillTier');
     const campaignsPill = document.getElementById('planPillCampaigns');
     const meeplesRow = document.getElementById('meeplesRow');
@@ -201,7 +201,9 @@ async function updatePlaygroupCountBadge() {
             const tier1 = joinInfo.tier1Count ?? 0;
             const tier2 = joinInfo.tier2Count ?? 0;
             const tier3 = joinInfo.tier3Count ?? 0;
-            const allowedTiers = joinInfo.allowedTiers ?? [1, 2, 3];
+            const rawTiers = joinInfo.allowedTiers ?? joinInfo.allowed_tiers ?? [1, 2, 3];
+            const allowedTiers = Array.isArray(rawTiers) ? rawTiers.map(t => parseInt(t, 10) || t).filter(t => t >= 1 && t <= 3) : [1, 2, 3];
+            if (allowedTiers.length === 0) allowedTiers.push(1, 2, 3);
 
             const showAccepts = window._scorekeeperShowCampaignAcceptsText !== false;
             const acceptsAll = allowedTiers && allowedTiers.length >= 3 &&
@@ -479,7 +481,7 @@ export async function openCampaignSettingsModal() {
             }
             close();
             showNotification('Join requirements updated.');
-            updatePlaygroupCountBadge();
+            await updatePlaygroupCountBadge();
         } catch (err) {
             showNotification('Could not update: ' + (err.message || err));
         } finally {
