@@ -205,16 +205,16 @@ export async function updatePlaygroupCountBadge() {
             const allowedTiers = Array.isArray(rawTiers) ? rawTiers.map(t => parseInt(t, 10) || t).filter(t => t >= 1 && t <= 3) : [1, 2, 3];
             if (allowedTiers.length === 0) allowedTiers.push(1, 2, 3);
 
-            const showAccepts = window._scorekeeperShowCampaignAcceptsText !== false;
+            const showAccepts = true;
             const acceptsAll = allowedTiers && allowedTiers.length >= 3 &&
                 allowedTiers.includes(1) && allowedTiers.includes(2) && allowedTiers.includes(3);
             const acceptsPhrase = acceptsAll ? 'everyone' : 'only ' + formatAcceptsRequirement(allowedTiers);
-            if (acceptsText) acceptsText.textContent = showAccepts ? 'This campaign accepts ' + acceptsPhrase + '. ' : '';
+            if (acceptsText) acceptsText.textContent = 'This campaign accepts ' + acceptsPhrase + '. ';
             if (populationText) populationText.textContent = formatLine2(travellers, tier1, tier2, tier3, allowedTiers);
 
             const isOwner = pg.role === 'owner';
             if (changeBtn) {
-                changeBtn.style.display = (isOwner && showAccepts) ? 'inline-flex' : 'none';
+                changeBtn.style.display = isOwner ? 'inline-flex' : 'none';
                 if (isOwner) {
                     changeBtn.onclick = () => openCampaignSettingsModal();
                 }
