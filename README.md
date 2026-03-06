@@ -1,4 +1,4 @@
-# The Scorekeeper
+# ScoreKpr
 
 Track your board game wins and bragging rights. A web app for running campaigns with friends: log wins, see leaderboards, tally round-by-round scores, and share invite or view-only links.
 
