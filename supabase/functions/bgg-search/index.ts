@@ -24,24 +24,52 @@ serve(async (req: Request) => {
   }
 
   try {
-    const bggUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame&exact=0`;
-    const bggResp = await fetch(bggUrl);
-    if (!bggResp.ok) {
-      const body = await bggResp.text().catch(() => '');
+    const bggToken = Deno.env.get('BGG_API_TOKEN');
+    if (!bggToken) {
       const payload = {
-        error: 'BGG API error',
-        status: bggResp.status,
-        statusText: bggResp.statusText,
-        body,
+        error: 'BGG_API_TOKEN is not set in environment',
       };
       return new Response(JSON.stringify(payload), {
-        status: bggResp.status || 502,
+        status: 500,
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
       });
     }
 
-    const xml = await bggResp.text();
-    const results = parseSearchXml(xml);
+    // 1) Search by name
+    const searchUrl = `https://boardgamegeek.com/xmlapi2/search?query=${encodeURIComponent(query)}&type=boardgame&exact=0`;
+    const searchResp = await fetchWithRetry(searchUrl, bggToken);
+    if (!searchResp.ok) {
+      const body = await searchResp.text().catch(() => '');
+      const payload = {
+        error: 'BGG API error (search)',
+        status: searchResp.status,
+        statusText: searchResp.statusText,
+        body,
+      };
+      return new Response(JSON.stringify(payload), {
+        status: searchResp.status || 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const searchXml = await searchResp.text();
+    const results = parseSearchXml(searchXml);
+
+    // 2) If we have results, fetch thumbnails via /thing
+    const ids = results.map(r => r.bgg_id);
+    if (ids.length > 0) {
+      const thingUrl = `https://boardgamegeek.com/xmlapi2/thing?id=${ids.slice(0, 20).join(',')}`;
+      const thingResp = await fetchWithRetry(thingUrl, bggToken);
+      if (thingResp.ok) {
+        const thingXml = await thingResp.text();
+        const thumbs = parseThingThumbnailsXml(thingXml);
+        results.forEach(r => {
+          if (thumbs[r.bgg_id]) {
+            r.thumbnail_url = thumbs[r.bgg_id];
+          }
+        });
+      }
+    }
 
     return new Response(JSON.stringify(results.slice(0, 20)), {
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
@@ -62,6 +90,32 @@ interface BggResult {
   name: string;
   year_published: number | null;
   thumbnail_url: string | null;
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(url: string, token: string, attempts = 3): Promise<Response> {
+  let lastResp: Response | null = null;
+  for (let i = 0; i < attempts; i++) {
+    const resp = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'Scorekpr/1.0 (https://scorekpr.com)',
+      },
+    });
+    if (resp.ok) return resp;
+    lastResp = resp;
+    if (![429, 500, 502, 503, 504].includes(resp.status)) {
+      return resp;
+    }
+    const delay = 500 * Math.pow(2, i); // 0.5s, 1s, 2s
+    await sleep(delay);
+  }
+  // If all retries failed, return the last response
+  if (lastResp) return lastResp;
+  return new Response('BGG request failed', { status: 502 });
 }
 
 function parseSearchXml(xml: string): BggResult[] {
@@ -91,6 +145,28 @@ function parseSearchXml(xml: string): BggResult[] {
   }
 
   return results;
+}
+
+function parseThingThumbnailsXml(xml: string): Record<number, string> {
+  const map: Record<number, string> = {};
+  const itemRegex = /<item\s[^>]*id="(\d+)"[^>]*>([\s\S]*?)<\/item>/g;
+  const thumbRegex = /<thumbnail>([^<]*)<\/thumbnail>/;
+
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const bggId = parseInt(match[1], 10);
+    const chunk = match[2] || '';
+    const thumbMatch = thumbRegex.exec(chunk);
+    if (thumbMatch && thumbMatch[1]) {
+      let url = thumbMatch[1].trim();
+      if (url && url.startsWith('//')) {
+        url = 'https:' + url;
+      }
+      map[bggId] = url;
+    }
+  }
+
+  return map;
 }
 
 function decodeXmlEntities(s: string): string {

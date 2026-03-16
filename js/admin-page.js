@@ -1060,11 +1060,15 @@ async function searchBGGForMerge(query, resultsDiv, onClear, onPick) {
             resultsDiv.innerHTML = '<span style="color:var(--text-muted); font-size:0.85rem;">No results.</span>';
             return;
         }
-        resultsDiv.innerHTML = results.slice(0, 5).map(r =>
-            `<button type="button" class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
-                ${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}
-            </button>`
-        ).join('');
+        resultsDiv.innerHTML = results.slice(0, 5).map(r => {
+            const thumb = r.thumbnail_url
+                ? `<img src="${esc(r.thumbnail_url)}" class="admin-bgg-thumb" alt="">`
+                : '';
+            const label = `${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}`;
+            return `<button type="button" class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
+                ${thumb}<span class="admin-bgg-label">${label}</span>
+            </button>`;
+        }).join('');
         resultsDiv.querySelectorAll('.admin-bgg-result').forEach(btn => {
             btn.addEventListener('click', () => {
                 const bgg = JSON.parse(btn.dataset.bgg);
