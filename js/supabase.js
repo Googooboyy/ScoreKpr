@@ -1365,6 +1365,15 @@ export async function linkGameToGlobal(gameId, globalGameId, canonicalName = nul
     if (error) throw error;
 }
 
+export async function adminUnlinkGameFromGlobal(gameId) {
+    const ac = getAdminClient();
+    if (!ac) throw new Error('Admin client not available');
+    const { error } = await ac.from('games')
+        .update({ global_game_id: null })
+        .eq('id', gameId);
+    if (error) throw error;
+}
+
 /**
  * Create a global_game by name (no BGG). Uses a synthetic negative bgg_id in 32-bit integer range (-2147483648 to -1).
  */

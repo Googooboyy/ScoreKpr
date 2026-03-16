@@ -19,7 +19,8 @@ import {
     deletePlaygroupAdmin, deleteInviteToken, replaceInviteToken,
     adminDeleteEntry, adminDeleteGame, adminDeletePlayer, adminMergeGames, adminUpdateGame,
     adminRemoveUserFromCampaigns, adminDeleteUserAccount,
-    updateLastSeen, fetchUserLastSeenMap
+    updateLastSeen, fetchUserLastSeenMap,
+    adminUnlinkGameFromGlobal
 } from './supabase.js';
 import { signOut } from './auth.js';
 
@@ -822,6 +823,7 @@ function renderGamesTable() {
         <td>
             <button class="admin-action-btn" data-edit-game="${g.id}" title="Edit name">Edit</button>
             ${canMerge ? `<button class="admin-action-btn admin-action-success" data-merge-game="${g.id}" title="Merge into another game">Merge</button>` : ''}
+            ${g.global_game_id ? `<button class="admin-action-btn" data-unlink-game="${g.id}" title="Unlink from Global game">Unlink</button>` : ''}
             <button class="admin-action-btn admin-action-danger" data-delete-game="${g.id}" title="Delete game">✕</button>
         </td>
     </tr>`;
@@ -832,6 +834,24 @@ function renderGamesTable() {
     });
     tbody.querySelectorAll('[data-merge-game]').forEach(btn => {
         btn.addEventListener('click', () => showMergeModal(btn.dataset.mergeGame));
+    });
+    tbody.querySelectorAll('[data-unlink-game]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const gameId = btn.dataset.unlinkGame;
+            if (!gameId) return;
+            if (!confirm('Unlink this game from its Global game? This will not delete any data.')) return;
+            btn.disabled = true;
+            try {
+                await adminUnlinkGameFromGlobal(gameId);
+                _games = _games.map(g => g.id === gameId ? { ...g, global_game_id: null } : g);
+                renderGamesTable();
+                renderConsolidatedGames();
+                adminToast('Game unlinked.');
+            } catch (e) {
+                adminToast('Error unlinking game: ' + (e.message || e));
+                btn.disabled = false;
+            }
+        });
     });
     tbody.querySelectorAll('[data-delete-game]').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -1060,15 +1080,15 @@ async function searchBGGForMerge(query, resultsDiv, onClear, onPick) {
             resultsDiv.innerHTML = '<span style="color:var(--text-muted); font-size:0.85rem;">No results.</span>';
             return;
         }
-        resultsDiv.innerHTML = results.slice(0, 5).map(r => {
-            const thumb = r.thumbnail_url
-                ? `<img src="${esc(r.thumbnail_url)}" class="admin-bgg-thumb" alt="">`
-                : '';
+        resultsDiv.innerHTML = results.map(r => {
             const label = `${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}`;
+            const thumb = r.thumbnail_url
+              ? `<img src="${esc(r.thumbnail_url)}" class="admin-bgg-thumb" alt="">`
+              : '';
             return `<button type="button" class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
-                ${thumb}<span class="admin-bgg-label">${label}</span>
+              ${thumb}<span class="admin-bgg-label">${label}</span>
             </button>`;
-        }).join('');
+          }).join('');
         resultsDiv.querySelectorAll('.admin-bgg-result').forEach(btn => {
             btn.addEventListener('click', () => {
                 const bgg = JSON.parse(btn.dataset.bgg);
@@ -1517,11 +1537,15 @@ async function searchBGG(query, gameId) {
             return;
         }
 
-        resultsDiv.innerHTML = results.slice(0, 5).map(r =>
-            `<button class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
-                ${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}
-            </button>`
-        ).join('');
+        resultsDiv.innerHTML = results.map(r => {
+            const label = `${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}`;
+            const thumb = r.thumbnail_url
+                ? `<img src="${esc(r.thumbnail_url)}" class="admin-bgg-thumb" alt="">`
+                : '';
+            return `<button class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
+                ${thumb}<span class="admin-bgg-label">${label}</span>
+            </button>`;
+        }).join('');
 
         resultsDiv.querySelectorAll('.admin-bgg-result').forEach(btn => {
             btn.addEventListener('click', () => linkBGGResult(gameId, JSON.parse(btn.dataset.bgg)));

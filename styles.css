@@ -600,7 +600,8 @@ body.screen-shake {
 .games-section-title { font-size: 1.2rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; }
 .games-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    /* Use minmax(0, 1fr) so very long titles can't force one column wider than the other */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 16px;
     margin-bottom: 30px;
     align-items: stretch; /* ensure both columns fill full height/width */
@@ -2801,16 +2802,16 @@ html { overflow-x: hidden; }
 .admin-link-results { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; }
 .admin-bgg-result {
     padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px;
-    background: var(--bg-secondary); color: var(--text-secondary); font-size: 0.8rem;
+    background-color: var(--bg-secondary); color: var(--text-secondary); font-size: 0.8rem;
     cursor: pointer; transition: all 0.2s;
     display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
 }
-.admin-bgg-result:hover { border-color: var(--accent-success); color: var(--accent-success); background: rgba(16,185,129,0.08); }
-.admin-bgg-result.selected { border-color: var(--accent-success); color: var(--accent-success); background: rgba(16,185,129,0.15); }
+.admin-bgg-result:hover { border-color: var(--accent-success); color: var(--accent-success); background-color: rgba(16,185,129,0.08); }
+.admin-bgg-result.selected { border-color: var(--accent-success); color: var(--accent-success); background-color: rgba(16,185,129,0.15); }
 
 .admin-bgg-result .admin-bgg-thumb {
-    width: 32px;
-    height: 32px;
+    width: 50px;
+    height: 50px;
     object-fit: cover;
     border-radius: 4px;
     flex-shrink: 0;
