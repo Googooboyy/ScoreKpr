@@ -23,6 +23,7 @@ import {
     adminUnlinkGameFromGlobal
 } from './supabase.js';
 import { signOut } from './auth.js';
+import { copyTextWithFallback } from './clipboard.js';
 
 // ── Toast (replaces alert for consistent in-app feedback) ──────────────────────
 function adminToast(msg) {
@@ -1630,10 +1631,19 @@ function renderInvites() {
     }).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No invite tokens.</td></tr>';
 
     tbody.querySelectorAll('[data-copy-invite]').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const token = btn.dataset.copyInvite;
             const url = baseUrl + (baseUrl.endsWith('/') ? '' : '') + (baseUrl.includes('?') ? '&' : '?') + 'invite=' + encodeURIComponent(token);
-            navigator.clipboard.writeText(url).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy link'; }, 1500); }).catch(() => prompt('Copy invite link:', url));
+            const result = await copyTextWithFallback(url, { promptLabel: 'Copy invite link:' });
+            if (result.method === 'clipboard') {
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+            } else if (result.method === 'prompt') {
+                btn.textContent = 'Manual copy';
+                setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+            } else {
+                adminToast('Clipboard is unavailable in this browser.');
+            }
         });
     });
     tbody.querySelectorAll('[data-replace-invite]').forEach(btn => {
@@ -2033,10 +2043,16 @@ function showMessageSentModal(userIds, message) {
     const close = () => modal.classList.remove('active');
 
     copyBtn.onclick = () => {
-        navigator.clipboard.writeText(summary).then(() => {
-            copyBtn.textContent = 'Copied!';
-            setTimeout(() => { copyBtn.textContent = 'Copy summary'; }, 1500);
-        }).catch(() => adminToast('Could not copy.'));
+        copyTextWithFallback(summary, { promptLabel: 'Copy summary:' }).then((result) => {
+            if (result.method === 'clipboard') {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => { copyBtn.textContent = 'Copy summary'; }, 1500);
+            } else if (result.method === 'prompt') {
+                adminToast('Clipboard blocked. Copy from the prompt.');
+            } else {
+                adminToast('Could not copy.');
+            }
+        });
     };
     closeBtn.onclick = close;
     modal.addEventListener('click', e => { if (e.target === modal) close(); });

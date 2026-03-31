@@ -1,6 +1,7 @@
 import { fetchPlaygroups, createPlaygroup, getOrCreateInviteToken, leavePlaygroup, fetchCampaignJoinInfo, updateCampaignJoinRequirements } from './supabase.js';
 import { showNotification, showModal, openTierInfoModal } from './modals.js';
 import { isAdminMode } from './admin.js';
+import { copyTextWithFallback } from './clipboard.js';
 
 function getTierLabel(tier) {
     const t = parseInt(tier, 10) || 1;
@@ -293,7 +294,10 @@ export function setupPlaygroupUI() {
                 const token = await getOrCreateInviteToken(pg.id);
                 const url = new URL(window.location.origin + window.location.pathname);
                 url.searchParams.set('invite', token);
-                await navigator.clipboard.writeText(url.toString());
+                const copyResult = await copyTextWithFallback(url.toString(), { promptLabel: 'Copy campaign invite link:' });
+                if (copyResult.method === 'none') {
+                    throw new Error('Clipboard is unavailable in this browser.');
+                }
                 if (invitePlaygroupName) invitePlaygroupName.textContent = pg.name;
                 inviteModal.classList.add('active');
             } catch (err) {
