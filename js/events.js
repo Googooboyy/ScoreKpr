@@ -587,7 +587,8 @@ export async function showNewPlayerInput() {
     const isCommoner = tier === 1;
 
     if (sourceRow) sourceRow.style.display = isCommoner ? 'none' : '';
-    if (presetSection) presetSection.style.display = isCommoner ? '' : 'none';
+    /* Preset avatars for every tier; file/URL upload remains Noble+ only (sourceRow above). */
+    if (presetSection) presetSection.style.display = '';
     if (presetGrid) presetGrid.innerHTML = '';
 
     uiState.tempPlayerImage = null;
@@ -596,7 +597,7 @@ export async function showNewPlayerInput() {
     const fileInput = document.getElementById('newPlayerImage');
     if (fileInput) fileInput.value = '';
 
-    if (isCommoner && presetGrid) {
+    if (presetGrid) {
         try {
             const presets = await fetchPresetAvatars();
             presetGrid.innerHTML = presets.map((a, i) => `<button type="button" class="preset-avatar-option" data-idx="${i}" title="${(a.label || '').replace(/"/g, '&quot;')}"><img src="${a.image_url}" alt=""></button>`).join('');
