@@ -938,14 +938,28 @@ export async function fetchUserTier() {
     return { tier: (data?.tier ?? 1) };
 }
 
-/** Fetch user_id -> tier map (admin only). */
+/** Coerce DB/postgrest tier to 1|2|3 (values may arrive as string). */
+function coerceUserTierInt(raw) {
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 3 ? n : 1;
+}
+
+/** Fetch user_id -> tier map (admin only). Keys are lowercase UUID strings; values are integers 1–3. */
 export async function fetchUserTiersMap() {
     const ac = getAdminClient();
     if (!ac) throw new Error('Admin client not available');
     const { data, error } = await ac.from('user_tiers')
         .select('user_id, tier');
     if (error) throw error;
-    return Object.fromEntries((data || []).map(r => [r.user_id, r.tier]));
+    const _rows = data || [];
+    const _map = Object.fromEntries(_rows.map(r => {
+        const k = String(r.user_id || '').toLowerCase();
+        return [k, coerceUserTierInt(r.tier)];
+    }));
+    // #region agent log
+    fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H3-H4', location: 'supabase.js:fetchUserTiersMap', message: 'user_tiers normalized map', data: { rowCount: _rows.length, mapKeys: Object.keys(_map).length, rawSampleTypes: _rows.slice(0, 5).map(r => typeof r.tier), normalizedSampleTiers: Object.values(_map).slice(0, 5) }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
+    return _map;
 }
 
 /** Update a user's tier (admin only). */

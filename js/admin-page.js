@@ -334,26 +334,76 @@ function renderCampaigns() {
 
 // ── Users ────────────────────────────────────────────────────────────────────
 
+function adminTierMapKey(userId) {
+    return String(userId || '').toLowerCase();
+}
+
+/** Non-PII snapshot after user_tiers load: sessionStorage + console (DevTools → Console). */
+function adminDbgUsersTierMap(branch, map) {
+    const vals = Object.values(map);
+    const payload = {
+        phase: 'tiers_loaded',
+        branch,
+        mapKeys: Object.keys(map).length,
+        valueTypes: [...new Set(vals.map(v => typeof v))].join(',')
+    };
+    const json = JSON.stringify({ t: Date.now(), ...payload });
+    try {
+        sessionStorage.setItem('__sk_dbg819', json);
+        sessionStorage.setItem('scorekeeper_dbg_user_tiers', json);
+    } catch (_) {}
+    console.info('[ScoreKpr admin] Users tier map', payload);
+}
+
 async function loadUsers() {
     if (!guardAdmin()) return;
-    const fetchPromises = [fetchLastPersonalMessagePerUser()];
-    if (!_users.length) {
-        fetchPromises.unshift(
-            fetchAllUsers(), fetchAllPlaygroupMembers(), fetchUserLastSeenMap(), fetchUserTiersMap()
-        );
+    try {
+        sessionStorage.setItem('scorekeeper_dbg_users_load', JSON.stringify({ phase: 'started', t: Date.now() }));
+    } catch (_) {}
+    // #region agent log
+    const _dbgUsersLen = _users.length;
+    const _dbgMapKeys = Object.keys(_userTiersMap).length;
+    fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'post-fix', hypothesisId: 'H1', location: 'admin-page.js:loadUsers:entry', message: 'loadUsers entry', data: { usersCached: _dbgUsersLen, userTiersMapKeysBefore: _dbgMapKeys }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
+    try {
+        if (!_users.length) {
+            const [users, members, lastSeen, tiersMap, lastMsg] = await Promise.all([
+                fetchAllUsers(), fetchAllPlaygroupMembers(), fetchUserLastSeenMap(), fetchUserTiersMap(),
+                fetchLastPersonalMessagePerUser()
+            ]);
+            _users = users;
+            _members = members;
+            _userLastSeen = lastSeen;
+            _userTiersMap = tiersMap || {};
+            _userLastMessage = lastMsg || {};
+            // #region agent log
+            adminDbgUsersTierMap('full', _userTiersMap);
+            fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H1-H2', location: 'admin-page.js:loadUsers:fullBranch', message: 'after full user load', data: { tiersMapKeyCount: Object.keys(_userTiersMap).length }, timestamp: Date.now() }) }).catch(() => {});
+            // #endregion
+        } else {
+            const [tiersMap, lastMsg] = await Promise.all([
+                fetchUserTiersMap(),
+                fetchLastPersonalMessagePerUser()
+            ]);
+            _userTiersMap = tiersMap || {};
+            _userLastMessage = lastMsg || {};
+            // #region agent log
+            adminDbgUsersTierMap('cached', _userTiersMap);
+            fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H1', location: 'admin-page.js:loadUsers:cachedUsersBranch', message: 'refetched user_tiers while reusing cached user list', data: { tiersMapKeyCount: Object.keys(_userTiersMap).length }, timestamp: Date.now() }) }).catch(() => {});
+            // #endregion
+        }
+        renderUsers();
+    } catch (e) {
+        try {
+            sessionStorage.setItem('scorekeeper_dbg_users_load', JSON.stringify({
+                phase: 'error',
+                t: Date.now(),
+                message: String(e && e.message ? e.message : e)
+            }));
+        } catch (_) {}
+        console.error('[ScoreKpr admin] loadUsers failed', e);
+        adminToast('Failed to load users: ' + (e.message || e));
     }
-    const results = await Promise.all(fetchPromises);
-    if (!_users.length) {
-        const [users, members, lastSeen, tiersMap, lastMsg] = results;
-        _users = users;
-        _members = members;
-        _userLastSeen = lastSeen;
-        _userTiersMap = tiersMap || {};
-        _userLastMessage = lastMsg || {};
-    } else {
-        _userLastMessage = results[0] || {};
-    }
-    renderUsers();
 }
 
 let _tierDefinitions = {};
@@ -552,11 +602,19 @@ function renderUsers() {
         const icon = th.querySelector('.sort-icon');
         if (icon) icon.textContent = th.dataset.sort === _usersSortBy ? (_usersSortDir === 'asc' ? '↑' : '↓') : '';
     });
+    // #region agent log
+    if (filtered.length) {
+        const _u = filtered[0];
+        const _k = adminTierMapKey(_u.id);
+        const _t = _userTiersMap[_k];
+        fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H3-H4', location: 'admin-page.js:renderUsers', message: 'first row tier resolution', data: { hasMapKey: Object.prototype.hasOwnProperty.call(_userTiersMap, _k), resolvedTier: _t, tierJsType: typeof _t, strictEq2: _t === 2 }, timestamp: Date.now() }) }).catch(() => {});
+    }
+    // #endregion
     tbody.innerHTML = filtered.map(u => {
         const owned = _members.filter(m => m.user_id === u.id && m.role === 'owner').length;
         const memberOf = _members.filter(m => m.user_id === u.id).length;
         const lastSeen = _userLastSeen[u.id];
-        const tier = _userTiersMap[u.id] ?? 1;
+        const tier = _userTiersMap[adminTierMapKey(u.id)] ?? 1;
         const tierOpts = `<option value="1" ${tier === 1 ? 'selected' : ''}>Commoner</option><option value="2" ${tier === 2 ? 'selected' : ''}>Noble</option><option value="3" ${tier === 3 ? 'selected' : ''}>Royal</option>`;
         return `<tr data-id="${u.id}">
             <td><input type="checkbox" class="admin-row-check" data-table="users" value="${u.id}"></td>
@@ -577,11 +635,11 @@ function renderUsers() {
             const newTier = parseInt(sel.value, 10) || 1;
             try {
                 await updateUserTier(uid, newTier);
-                _userTiersMap[uid] = newTier;
+                _userTiersMap[adminTierMapKey(uid)] = newTier;
                 adminToast('Tier updated to ' + getTierLabel(newTier));
             } catch (e) {
                 adminToast('Error updating tier: ' + (e.message || e));
-                sel.value = _userTiersMap[uid] ?? 1;
+                sel.value = String(_userTiersMap[adminTierMapKey(uid)] ?? 1);
             }
         });
     });
