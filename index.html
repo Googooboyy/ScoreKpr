@@ -187,8 +187,12 @@
                         <h2>Select Winner & Players</h2>
                         <p>Who won? Who else played? (optional)</p>
                     </div>
-                    <div id="playerSelection" class="selection-grid selection-grid-meeple">
-                        <div class="selection-item add-new-btn" id="showNewPlayerBtn">+ Add Meeple</div>
+                    <div class="player-selection-stack">
+                        <div id="playerSelection" class="selection-grid selection-grid-meeple">
+                            <div class="selection-item add-new-btn" id="showNewPlayerBtn">+ Add Meeple</div>
+                        </div>
+                        <div id="playerSelectionGuestLabel" class="meeple-section-label" style="display: none;">Guest meeples</div>
+                        <div id="playerSelectionGuests" class="selection-grid selection-grid-meeple player-selection-guest-grid" style="display: none;"></div>
                     </div>
                     <div id="newPlayerInput" class="new-item-input">
                         <input type="text" id="newPlayerName" class="input-field" placeholder="Enter meeple name...">
@@ -761,7 +765,16 @@
                 <select id="editPlayerSelect" class="input-field" style="padding: 12px;"></select>
 
                 <label style="display: block; margin: 16px 0 6px; color: var(--text-secondary);">Players who played</label>
-                <div id="editEntryParticipants" class="selection-grid selection-grid-meeple edit-entry-meeple-grid" style="min-height: 48px;"></div>
+                <div class="edit-entry-inline-add" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center;">
+                    <input type="text" id="editEntryNewPlayerName" class="input-field" placeholder="New name…" style="flex: 1; min-width: 120px; padding: 10px;">
+                    <button type="button" class="modal-btn cancel" id="editEntryAddMeepleBtn" style="margin: 0;">Add meeple</button>
+                    <button type="button" class="modal-btn cancel" id="editEntryAddGuestBtn" style="margin: 0;">Add guest</button>
+                </div>
+                <div id="editEntryParticipants" class="edit-entry-participants-stack">
+                    <div id="editEntryParticipantsCore" class="selection-grid selection-grid-meeple edit-entry-meeple-grid" style="min-height: 48px;"></div>
+                    <div id="editEntryParticipantsGuestLabel" class="meeple-section-label" style="display: none;">Guest meeples</div>
+                    <div id="editEntryParticipantsGuests" class="selection-grid selection-grid-meeple edit-entry-meeple-grid" style="display: none; min-height: 48px;"></div>
+                </div>
                 
                 <label style="display: block; margin: 16px 0 6px; color: var(--text-secondary);">Date</label>
                 <input type="date" id="editDateInput" class="input-field date-input">

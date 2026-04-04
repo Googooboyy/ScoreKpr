@@ -936,6 +936,32 @@ body.read-only .add-new-btn { pointer-events: none; opacity: 0.5; }
     overflow: hidden;
 }
 
+.player-selection-stack,
+.edit-entry-participants-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.meeple-section-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 4px 0 0;
+}
+.meeple-guest-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--accent-primary);
+    margin-left: 4px;
+    vertical-align: middle;
+}
+.player-card-is-guest {
+    border-color: rgba(99, 102, 241, 0.35);
+}
+
 .selection-item-game {
     padding: 0; min-height: 0; aspect-ratio: 3 / 4; overflow: hidden;
 }

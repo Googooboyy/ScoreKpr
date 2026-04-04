@@ -4,7 +4,8 @@ import {
     uiState,
     saveData,
     escapeHtml,
-    formatDate
+    formatDate,
+    playerIsGuest
 } from './data.js';
 import { getActivePlaygroup } from './playgroups.js';
 import { showLoginPrompt } from './auth-ui.js';
@@ -332,6 +333,93 @@ export function handleImageFileSelect(file, previewId, callback) {
     reader.readAsDataURL(file);
 }
 
+function buildEditWinRecordPlayerSelectHtml(selectedWinner) {
+    const playerSelect = document.getElementById('editPlayerSelect');
+    if (!playerSelect) return;
+    const coreP = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestP = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const opt = p => '<option value="' + escapeHtmlForExport(p) + '"' + (p === selectedWinner ? ' selected' : '') + '>' + escapeHtmlForExport(p) + '</option>';
+    let html = '';
+    if (guestP.length > 0 && coreP.length > 0) {
+        html += '<optgroup label="Campaign meeples">' + coreP.map(opt).join('') + '</optgroup>';
+        html += '<optgroup label="Guest meeples">' + guestP.map(opt).join('') + '</optgroup>';
+    } else {
+        html = [...coreP, ...guestP].sort((a, b) => a.localeCompare(b)).map(opt).join('');
+    }
+    playerSelect.innerHTML = html;
+}
+
+function mountEditEntryParticipantGrids(participants) {
+    const coreEl = document.getElementById('editEntryParticipantsCore');
+    const guestEl = document.getElementById('editEntryParticipantsGuests');
+    const guestLabel = document.getElementById('editEntryParticipantsGuestLabel');
+    if (!coreEl || !guestEl) return;
+
+    coreEl.innerHTML = '';
+    guestEl.innerHTML = '';
+
+    const coreP = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestP = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+
+    const addToggle = (p, container) => {
+        const selected = participants.includes(p);
+        const playerData = data.playerData && data.playerData[p] ? data.playerData[p] : {};
+        const image = playerData.image || null;
+        const imgHtml = image
+            ? '<img src="' + escapeHtmlForExport(image) + '" alt="" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
+            : '<div class="selection-item-meeple-placeholder">👤</div>';
+        const guestBadge = playerIsGuest(p) ? '<span class="meeple-guest-badge">Guest</span>' : '';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'selection-item selection-item-meeple' + (selected ? ' selected' : '');
+        btn.setAttribute('data-player', p);
+        btn.innerHTML = '<div class="selection-item-meeple-img-wrap">' + imgHtml + '</div><span class="selection-item-meeple-name">' + escapeHtmlForExport(p) + guestBadge + '</span>';
+        btn.addEventListener('click', () => {
+            const idx = participants.indexOf(p);
+            if (idx >= 0) {
+                if (participants.length > 1) participants.splice(idx, 1);
+            } else {
+                participants.push(p);
+            }
+            btn.classList.toggle('selected', participants.includes(p));
+        });
+        container.appendChild(btn);
+    };
+
+    coreP.forEach(p => addToggle(p, coreEl));
+    guestP.forEach(p => addToggle(p, guestEl));
+
+    if (guestP.length > 0) {
+        if (guestLabel) guestLabel.style.display = 'block';
+        guestEl.style.display = 'grid';
+    } else {
+        if (guestLabel) guestLabel.style.display = 'none';
+        guestEl.style.display = 'none';
+    }
+
+    uiState.editEntryParticipants = participants;
+}
+
+/** Rebuild winner dropdown and participant grids while Edit Win Record is open (e.g. after inline add). */
+export function refreshEditWinRecordPlayerLists(participants) {
+    const sel = document.getElementById('editPlayerSelect');
+    const winner = sel ? sel.value : '';
+    buildEditWinRecordPlayerSelectHtml(winner);
+    mountEditEntryParticipantGrids(participants);
+}
+
+/** Keep participant toggles aligned when Victorious Meeple changes. */
+export function syncEditEntryWinnerFromDropdown() {
+    const newPlayer = document.getElementById('editPlayerSelect')?.value;
+    const parts = uiState.editEntryParticipants;
+    if (!newPlayer || !parts) return;
+    if (!parts.includes(newPlayer)) parts.push(newPlayer);
+    document.querySelectorAll('#editEntryParticipantsCore .selection-item-meeple, #editEntryParticipantsGuests .selection-item-meeple').forEach(btn => {
+        const p = btn.getAttribute('data-player');
+        btn.classList.toggle('selected', parts.includes(p));
+    });
+}
+
 export function openEditEntryModal(id) {
     const entry = data.entries.find(e => e.id === id);
     if (!entry) return;
@@ -346,39 +434,8 @@ export function openEditEntryModal(id) {
         '<option value="' + escapeHtmlForExport(g) + '"' + (g === entry.game ? ' selected' : '') + '>' + escapeHtmlForExport(g) + '</option>'
     ).join('');
 
-    const playerSelect = document.getElementById('editPlayerSelect');
-    playerSelect.innerHTML = data.players.map(p =>
-        '<option value="' + escapeHtmlForExport(p) + '"' + (p === entry.player ? ' selected' : '') + '>' + escapeHtmlForExport(p) + '</option>'
-    ).join('');
-
-    const participantsContainer = document.getElementById('editEntryParticipants');
-    if (participantsContainer) {
-        participantsContainer.innerHTML = '';
-        (data.players || []).sort((a, b) => a.localeCompare(b)).forEach(p => {
-            const selected = participants.includes(p);
-            const playerData = data.playerData && data.playerData[p] ? data.playerData[p] : {};
-            const image = playerData.image || null;
-            const imgHtml = image
-                ? '<img src="' + escapeHtmlForExport(image) + '" alt="" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
-                : '<div class="selection-item-meeple-placeholder">👤</div>';
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'selection-item selection-item-meeple' + (selected ? ' selected' : '');
-            btn.setAttribute('data-player', p);
-            btn.innerHTML = '<div class="selection-item-meeple-img-wrap">' + imgHtml + '</div><span class="selection-item-meeple-name">' + escapeHtmlForExport(p) + '</span>';
-            btn.addEventListener('click', () => {
-                const idx = participants.indexOf(p);
-                if (idx >= 0) {
-                    if (participants.length > 1) participants.splice(idx, 1);
-                } else {
-                    participants.push(p);
-                }
-                btn.classList.toggle('selected', participants.includes(p));
-            });
-            participantsContainer.appendChild(btn);
-        });
-        uiState.editEntryParticipants = participants;
-    }
+    buildEditWinRecordPlayerSelectHtml(entry.player);
+    mountEditEntryParticipantGrids(participants);
 
     document.getElementById('editDateInput').value = entry.date;
 

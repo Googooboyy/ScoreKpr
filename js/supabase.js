@@ -238,7 +238,7 @@ export async function fetchGamesFromOtherCampaigns(currentPlaygroupId, currentGa
 export async function fetchPlayers(playgroupId) {
     const { data, error } = await getActiveClient()
         .from('players')
-        .select('id, name, user_id')
+        .select('id, name, user_id, is_guest')
         .eq('playgroup_id', playgroupId)
         .order('name');
 
@@ -541,7 +541,7 @@ export async function loadPlaygroupData(playgroupId) {
     } catch (err) {
         // Fallback if migration 030 not applied: use fetchPlayers (tier pills won't show)
         players = await fetchPlayers(playgroupId);
-        players.forEach(p => { p.tier = 1; });
+        players.forEach(p => { p.tier = 1; if (p.is_guest == null) p.is_guest = false; });
     }
     const [games, entries, participantsByEntry] = await Promise.all([
         fetchGames(playgroupId),
@@ -583,11 +583,12 @@ export async function loadPlaygroupData(playgroupId) {
         }
     });
 
-    // Merge user_id and tier into playerData so profile modal and player cards can access them
+    // Merge user_id, tier, and guest flag into playerData
     players.forEach(p => {
         if (!playerData[p.name]) playerData[p.name] = {};
         playerData[p.name].userId = p.user_id || null;
         playerData[p.name].tier = p.tier != null ? p.tier : 1;
+        playerData[p.name].isGuest = !!(p.is_guest);
     });
 
     // Merge participants into each entry
@@ -624,12 +625,14 @@ export async function insertGame(playgroupId, name, globalGameId = null) {
 }
 
 /**
- * Insert a new player
+ * Insert a new player. Pass { isGuest: true } for guest meeples (unlinked roster row).
  */
-export async function insertPlayer(playgroupId, name) {
+export async function insertPlayer(playgroupId, name, options = {}) {
+    const row = { playgroup_id: playgroupId, name };
+    if (options.isGuest) row.is_guest = true;
     const { data, error } = await getActiveClient()
         .from('players')
-        .insert({ playgroup_id: playgroupId, name })
+        .insert(row)
         .select()
         .single();
 
@@ -956,9 +959,6 @@ export async function fetchUserTiersMap() {
         const k = String(r.user_id || '').toLowerCase();
         return [k, coerceUserTierInt(r.tier)];
     }));
-    // #region agent log
-    fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H3-H4', location: 'supabase.js:fetchUserTiersMap', message: 'user_tiers normalized map', data: { rowCount: _rows.length, mapKeys: Object.keys(_map).length, rawSampleTypes: _rows.slice(0, 5).map(r => typeof r.tier), normalizedSampleTiers: Object.values(_map).slice(0, 5) }, timestamp: Date.now() }) }).catch(() => {});
-    // #endregion
     return _map;
 }
 
@@ -998,7 +998,8 @@ export async function fetchCampaignJoinInfo(playgroupId) {
         travellers: row?.travellers ?? 0,
         tier1Count: row?.tier_1_count ?? 0,
         tier2Count: row?.tier_2_count ?? 0,
-        tier3Count: row?.tier_3_count ?? 0
+        tier3Count: row?.tier_3_count ?? 0,
+        guestMeeplesCount: row?.guest_meeples_count ?? 0
     };
 }
 

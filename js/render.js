@@ -10,7 +10,8 @@ import {
     toggleShowAllGamesInAdd,
     escapeHtml,
     formatDate,
-    saveData
+    saveData,
+    playerIsGuest
 } from './data.js';
 import { deletePlayer, deleteGame, deleteEntryById } from './actions.js';
 import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox } from './modals.js';
@@ -107,6 +108,91 @@ export function toggleVictoryRoster(player) {
     }
 }
 
+function participatedInEntry(e, p) {
+    return (e.participants && e.participants.includes(p)) || (!e.participants && e.player === p);
+}
+
+function buildPlayerLeaderboardStat(player) {
+    const playerEntries = data.entries.filter(e => e.player === player);
+    const wins = playerEntries.length;
+    const participatedEntries = data.entries.filter(e => participatedInEntry(e, player));
+    const gamesPlayed = participatedEntries.length;
+    const winPct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
+    const gameBreakdown = calculateGameBreakdown(player);
+    const lastPlayedDate = participatedEntries.reduce((latest, entry) => {
+        if (!entry.date) return latest;
+        if (!latest) return entry.date;
+        return new Date(entry.date) > new Date(latest) ? entry.date : latest;
+    }, null);
+    const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
+    return {
+        player,
+        wins,
+        gamesPlayed,
+        winPct,
+        gameBreakdown,
+        lastPlayedDate,
+        image: playerData.image,
+        color: playerData.color,
+        userId: playerData.userId || null
+    };
+}
+
+function sortPlayerStatsByWins(a, b) {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return (b.winPct || 0) - (a.winPct || 0);
+}
+
+function renderSingleLeaderboardCard(stat, showCrown, isGuestCard) {
+    const currentUserId = data.currentUserId;
+    const playerDataObj = data.playerData && data.playerData[stat.player] ? data.playerData[stat.player] : {};
+    const isMyAccount = !!(currentUserId && playerDataObj.userId && playerDataObj.userId === currentUserId);
+    const linkedClass = isMyAccount ? ' is-my-account' : '';
+    const hasPlayerColorClass = stat.color ? ' has-player-color' : '';
+    const guestClass = isGuestCard ? ' player-card-is-guest' : '';
+    const playerCardStyle = stat.color ? '--player-card-color: ' + stat.color + ';' : '';
+    const crownHtml = showCrown ? '<div class="player-crown">👑</div>' : '';
+    const youBadge = isMyAccount ? '<span class="player-you-badge" title="Your linked account">You</span>' : '';
+    const isTraveller = !stat.userId;
+    const travellerBadge = isTraveller
+        ? '<span class="meeple-traveller-badge" title="Unlinked meeple">Traveller</span>'
+        : '';
+    const tierLabel = stat.userId && playerDataObj.tier
+        ? (playerDataObj.tier === 2 ? 'Noble' : playerDataObj.tier === 3 ? 'Royal' : 'Commoner')
+        : '';
+    const tierPill = tierLabel
+        ? '<span class="player-tier-pill player-tier-' + tierLabel.toLowerCase() + '" title="Membership tier">' + escapeHtml(tierLabel) + '</span>'
+        : '';
+    const guestBadge = isGuestCard ? '<span class="meeple-guest-badge">Guest</span>' : '';
+    const imageHtml = stat.image
+        ? '<div class="player-card-image-container">' + crownHtml + '<img src="' + escapeHtml(stat.image) + '" alt="' + escapeHtml(stat.player) + '" class="player-card-image" onerror="this.style.display=\'none\'; this.parentElement.querySelector(\'.player-card-image-placeholder\').style.display=\'flex\';"><div class="player-card-image-placeholder" style="display: none;">👤</div></div>'
+        : '<div class="player-card-image-container">' + crownHtml + '<div class="player-card-image-placeholder">👤</div></div>';
+    const displayQuote = (currentUserId && stat.userId === currentUserId && data.currentUserFavouriteQuote)
+        ? data.currentUserFavouriteQuote
+        : pickRandomQuote();
+
+    return '<div class="player-card' + hasPlayerColorClass + linkedClass + guestClass + '" data-player="' + escapeHtml(stat.player) + '" style="' + playerCardStyle + '">' +
+        '<div class="player-header">' +
+        '<div class="player-info-section player-profile-trigger" data-player="' + escapeHtml(stat.player) + '" title="View profile" style="cursor:pointer;">' + imageHtml +
+        '<div class="player-name-section">' +
+        '<div class="player-name">' + escapeHtml(stat.player) + youBadge + travellerBadge + tierPill + guestBadge + '</div>' +
+        '<div class="player-card-quote">' + escapeHtml(displayQuote) + '</div>' +
+        '</div>' +
+        '</div>' +
+        '</div>' +
+        '<div class="victory-roster-header" onclick="window.toggleVictoryRoster(\'' + escapeHtml(stat.player).replace(/'/g, "\\'") + '\')">' +
+        '<div class="victory-roster-wins">' + stat.wins + ' Games Won' + (stat.gamesPlayed > 0 ? ' · ' + (stat.winPct || 0).toFixed(0) + '% win rate' : '') + '</div>' +
+        '<div class="victory-roster-toggle-group">' +
+        '<span class="victory-roster-label">more</span>' +
+        '<span class="victory-roster-toggle" id="toggle-' + escapeHtml(stat.player) + '">▼</span>' +
+        '</div>' +
+        '</div>' +
+        '<div class="player-game-stats" id="roster-' + escapeHtml(stat.player) + '">' +
+        '<div class="player-games-list">' + renderGameBreakdown(stat.gameBreakdown) + '</div>' +
+        '</div>' +
+        '</div>';
+}
+
 export function renderPlayers() {
     const container = document.getElementById('playersContainer');
     if (!container) return;
@@ -133,89 +219,28 @@ export function renderPlayers() {
         return;
     }
 
-    const participated = (e, p) =>
-        (e.participants && e.participants.includes(p)) || (!e.participants && e.player === p);
+    const allSorted = data.players.map(buildPlayerLeaderboardStat).sort(sortPlayerStatsByWins);
+    const crownPlayerName = allSorted[0] ? allSorted[0].player : null;
 
-    let playerStats = data.players.map(player => {
-        const playerEntries = data.entries.filter(e => e.player === player);
-        const wins = playerEntries.length;
-        const participatedEntries = data.entries.filter(e => participated(e, player));
-        const gamesPlayed = participatedEntries.length;
-        const winPct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
-        const gameBreakdown = calculateGameBreakdown(player);
-        const lastPlayedDate = participatedEntries.reduce((latest, entry) => {
-            if (!entry.date) return latest;
-            if (!latest) return entry.date;
-            return new Date(entry.date) > new Date(latest) ? entry.date : latest;
-        }, null);
-        const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
-        return {
-            player: player,
-            wins: wins,
-            gamesPlayed,
-            winPct,
-            gameBreakdown: gameBreakdown,
-            lastPlayedDate: lastPlayedDate,
-            image: playerData.image,
-            color: playerData.color,
-            userId: playerData.userId || null
-        };
-    }).sort((a, b) => {
-        if (b.wins !== a.wins) return b.wins - a.wins;
-        return (b.winPct || 0) - (a.winPct || 0);
-    });
+    const coreNames = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestNames = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const coreStats = coreNames.map(buildPlayerLeaderboardStat).sort(sortPlayerStatsByWins);
+    const guestStats = guestNames.map(buildPlayerLeaderboardStat).sort(sortPlayerStatsByWins);
 
     if (toggleBtn) toggleBtn.style.display = 'none';
 
-    const currentUserId = data.currentUserId;
-    const pg = getActivePlaygroup();
-    container.innerHTML = playerStats.map((stat, index) => {
-        const playerDataObj = data.playerData && data.playerData[stat.player] ? data.playerData[stat.player] : {};
-        const isMyAccount = !!(currentUserId && playerDataObj.userId && playerDataObj.userId === currentUserId);
-        const linkedClass = isMyAccount ? ' is-my-account' : '';
-        const hasPlayerColorClass = stat.color ? ' has-player-color' : '';
-        const playerCardStyle = stat.color ? '--player-card-color: ' + stat.color + ';' : '';
-        const isFirst = index === 0;
-        const crownHtml = isFirst ? '<div class="player-crown">👑</div>' : '';
-        const youBadge = isMyAccount ? '<span class="player-you-badge" title="Your linked account">You</span>' : '';
-        const isTraveller = !stat.userId;
-        const travellerBadge = isTraveller
-            ? '<span class="meeple-traveller-badge" title="Unlinked meeple">Traveller</span>'
-            : '';
-        const tierLabel = stat.userId && playerDataObj.tier
-            ? (playerDataObj.tier === 2 ? 'Noble' : playerDataObj.tier === 3 ? 'Royal' : 'Commoner')
-            : '';
-        const tierPill = tierLabel
-            ? '<span class="player-tier-pill player-tier-' + tierLabel.toLowerCase() + '" title="Membership tier">' + escapeHtml(tierLabel) + '</span>'
-            : '';
-        const imageHtml = stat.image ?
-            '<div class="player-card-image-container">' + crownHtml + '<img src="' + escapeHtml(stat.image) + '" alt="' + escapeHtml(stat.player) + '" class="player-card-image" onerror="this.style.display=\'none\'; this.parentElement.querySelector(\'.player-card-image-placeholder\').style.display=\'flex\';"><div class="player-card-image-placeholder" style="display: none;">👤</div></div>' :
-            '<div class="player-card-image-container"><div class="player-card-image-placeholder">👤</div></div>';
-        const displayQuote = (currentUserId && stat.userId === currentUserId && data.currentUserFavouriteQuote)
-            ? data.currentUserFavouriteQuote
-            : pickRandomQuote();
+    const spanRow = '<div class="meeple-section-label" style="grid-column: 1 / -1;">';
+    const parts = [];
+    if (guestStats.length > 0 && coreStats.length > 0) {
+        parts.push(spanRow + 'Campaign meeples</div>');
+    }
+    parts.push(coreStats.map(stat => renderSingleLeaderboardCard(stat, stat.player === crownPlayerName, false)).join(''));
+    if (guestStats.length > 0) {
+        parts.push(spanRow + 'Guest meeples</div>');
+        parts.push(guestStats.map(stat => renderSingleLeaderboardCard(stat, stat.player === crownPlayerName, true)).join(''));
+    }
 
-        return '<div class="player-card' + hasPlayerColorClass + linkedClass + '" data-player="' + escapeHtml(stat.player) + '" style="' + playerCardStyle + '">' +
-            '<div class="player-header">' +
-            '<div class="player-info-section player-profile-trigger" data-player="' + escapeHtml(stat.player) + '" title="View profile" style="cursor:pointer;">' + imageHtml +
-            '<div class="player-name-section">' +
-            '<div class="player-name">' + escapeHtml(stat.player) + youBadge + travellerBadge + tierPill + '</div>' +
-            '<div class="player-card-quote">' + escapeHtml(displayQuote) + '</div>' +
-            '</div>' +
-            '</div>' +
-            '</div>' +
-            '<div class="victory-roster-header" onclick="window.toggleVictoryRoster(\'' + escapeHtml(stat.player).replace(/'/g, "\\'") + '\')">' +
-            '<div class="victory-roster-wins">' + stat.wins + ' Games Won' + (stat.gamesPlayed > 0 ? ' · ' + (stat.winPct || 0).toFixed(0) + '% win rate' : '') + '</div>' +
-            '<div class="victory-roster-toggle-group">' +
-            '<span class="victory-roster-label">more</span>' +
-            '<span class="victory-roster-toggle" id="toggle-' + escapeHtml(stat.player) + '">▼</span>' +
-            '</div>' +
-            '</div>' +
-            '<div class="player-game-stats" id="roster-' + escapeHtml(stat.player) + '">' +
-            '<div class="player-games-list">' + renderGameBreakdown(stat.gameBreakdown) + '</div>' +
-            '</div>' +
-            '</div>';
-    }).join('');
+    container.innerHTML = parts.join('');
 
     container.querySelectorAll('.player-profile-trigger').forEach(el => {
         el.addEventListener('click', function (e) {
@@ -569,44 +594,64 @@ async function loadOtherCampaignGamesForAddWin() {
     }
 }
 
+function appendMeepleSelectionTile(parentEl, player) {
+    const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
+    const image = playerData.image || null;
+    const inParticipants = (currentEntry.participants || []).includes(player);
+    const isWinner = currentEntry.player === player;
+    const selectedClass = inParticipants ? 'selected' : '';
+    const winnerBadge = isWinner ? ' <span class="selection-winner-badge" title="Winner">👑</span>' : '';
+    const guestBadge = playerIsGuest(player) ? ' <span class="meeple-guest-badge">Guest</span>' : '';
+    const div = document.createElement('div');
+    div.className = 'selection-item selection-item-meeple ' + selectedClass + (isWinner ? ' is-winner' : '');
+    div.setAttribute('data-player', player);
+    div.innerHTML =
+        '<div class="selection-item-meeple-img-wrap">' +
+        (image
+            ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(player) + '" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
+            : '<div class="selection-item-meeple-placeholder">👤</div>') +
+        '</div>' +
+        '<span class="selection-item-meeple-name">' + escapeHtml(player) + winnerBadge + guestBadge + '</span>';
+    div.addEventListener('click', function () {
+        togglePlayerInStep2(this.getAttribute('data-player'));
+    });
+    parentEl.appendChild(div);
+}
+
 export function renderPlayerSelection() {
     const container = document.getElementById('playerSelection');
+    const guestGrid = document.getElementById('playerSelectionGuests');
+    const guestLabel = document.getElementById('playerSelectionGuestLabel');
     const addBtn = container.querySelector('.add-new-btn');
     container.innerHTML = '';
     if (addBtn) container.appendChild(addBtn);
+    if (guestGrid) guestGrid.innerHTML = '';
 
     if (data.players.length === 0) {
         const p = document.createElement('p');
         p.style.cssText = 'color: var(--text-muted); text-align: center; grid-column: 1/-1;';
         p.textContent = 'No players yet. Add your first player above.';
         container.appendChild(p);
+        if (guestLabel) guestLabel.style.display = 'none';
+        if (guestGrid) guestGrid.style.display = 'none';
         return;
     }
 
-    const sortedPlayers = [...data.players].sort((a, b) => a.localeCompare(b));
+    const corePlayers = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestPlayers = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
 
-    sortedPlayers.forEach(player => {
-        const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
-        const image = playerData.image || null;
-        const inParticipants = (currentEntry.participants || []).includes(player);
-        const isWinner = currentEntry.player === player;
-        const selectedClass = inParticipants ? 'selected' : '';
-        const winnerBadge = isWinner ? ' <span class="selection-winner-badge" title="Winner">👑</span>' : '';
-        const div = document.createElement('div');
-        div.className = 'selection-item selection-item-meeple ' + selectedClass + (isWinner ? ' is-winner' : '');
-        div.setAttribute('data-player', player);
-        div.innerHTML =
-            '<div class="selection-item-meeple-img-wrap">' +
-            (image
-                ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(player) + '" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
-                : '<div class="selection-item-meeple-placeholder">👤</div>') +
-            '</div>' +
-            '<span class="selection-item-meeple-name">' + escapeHtml(player) + winnerBadge + '</span>';
-        div.addEventListener('click', function () {
-            togglePlayerInStep2(this.getAttribute('data-player'));
-        });
-        container.appendChild(div);
-    });
+    corePlayers.forEach(player => appendMeepleSelectionTile(container, player));
+
+    if (guestLabel && guestGrid) {
+        if (guestPlayers.length > 0) {
+            guestLabel.style.display = 'block';
+            guestGrid.style.display = 'grid';
+            guestPlayers.forEach(player => appendMeepleSelectionTile(guestGrid, player));
+        } else {
+            guestLabel.style.display = 'none';
+            guestGrid.style.display = 'none';
+        }
+    }
 
     const continueBtn = document.getElementById('step2ContinueBtn');
     if (continueBtn) continueBtn.disabled = !currentEntry.player;
