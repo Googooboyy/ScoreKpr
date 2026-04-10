@@ -25,3 +25,6 @@ exports-gamedata/
 .DS_Store
 Thumbs.db
 node_modules/
+_tmp_sharp_icons/
+_tmp_jimp/
+_tmp_icon_build/
