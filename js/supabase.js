@@ -437,6 +437,8 @@ export async function fetchEntries(playgroupId) {
             updated_at,
             created_by_name,
             updated_by_name,
+            score_snapshot_url,
+            score_snapshot_storage_path,
             games!inner(name),
             players!inner(name)
         `)
@@ -452,6 +454,8 @@ export async function fetchEntries(playgroupId) {
         updated_at: row.updated_at || null,
         created_by_name: row.created_by_name || null,
         updated_by_name: row.updated_by_name || null,
+        score_snapshot_url: row.score_snapshot_url || null,
+        score_snapshot_storage_path: row.score_snapshot_storage_path || null,
         game: row.games?.name || '',
         player: row.players?.name || ''
     }));
@@ -655,8 +659,10 @@ async function getCurrentUserName() {
  * Insert a new entry (win record). Optionally pass participantIds (including winner).
  * If omitted, defaults to [playerId] (winner only).
  */
-export async function insertEntry(playgroupId, gameId, playerId, date, participantIds = null) {
+export async function insertEntry(playgroupId, gameId, playerId, date, participantIds = null, options = {}) {
     const createdByName = await getCurrentUserName();
+    const snapshotUrl = options?.score_snapshot_url || null;
+    const snapshotStoragePath = options?.score_snapshot_storage_path || null;
     const { data, error } = await getActiveClient()
         .from('entries')
         .insert({
@@ -664,7 +670,9 @@ export async function insertEntry(playgroupId, gameId, playerId, date, participa
             game_id: gameId,
             player_id: playerId,
             date,
-            created_by_name: createdByName
+            created_by_name: createdByName,
+            score_snapshot_url: snapshotUrl,
+            score_snapshot_storage_path: snapshotStoragePath
         })
         .select()
         .single();
@@ -856,7 +864,17 @@ export async function importPlaygroupData(playgroupId, imported) {
             const participantIds = (entry.participants || [])
                 .map(name => playerIds[name])
                 .filter(Boolean);
-            await insertEntry(playgroupId, gid, pid, entry.date, participantIds.length > 0 ? participantIds : null);
+            await insertEntry(
+                playgroupId,
+                gid,
+                pid,
+                entry.date,
+                participantIds.length > 0 ? participantIds : null,
+                {
+                    score_snapshot_url: entry.score_snapshot_url || null,
+                    score_snapshot_storage_path: entry.score_snapshot_storage_path || null
+                }
+            );
         }
     }
 }
@@ -1301,7 +1319,7 @@ export async function fetchAllEntries() {
     const ac = getAdminClient();
     if (!ac) throw new Error('Admin client not available');
     const { data, error } = await ac.from('entries')
-        .select('id, date, created_at, updated_at, created_by_name, updated_by_name, game_id, player_id, playgroup_id')
+        .select('id, date, created_at, updated_at, created_by_name, updated_by_name, score_snapshot_url, score_snapshot_storage_path, game_id, player_id, playgroup_id')
         .order('date', { ascending: false });
     if (error) throw error;
     return data || [];

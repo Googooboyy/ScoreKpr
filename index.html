@@ -897,6 +897,22 @@
         </div>
     </div>
 
+    <!-- Score Snapshot Modal -->
+    <div class="modal-overlay" id="scoreSnapshotModal" aria-hidden="true">
+        <div class="modal modal-player-lightbox" role="dialog" aria-modal="true" aria-labelledby="scoreSnapshotCaption">
+            <button type="button" class="modal-lightbox-close" id="scoreSnapshotClose" aria-label="Close">✕</button>
+            <div class="modal-player-lightbox-inner">
+                <img id="scoreSnapshotImg" class="modal-player-lightbox-img" alt="">
+                <div class="modal-player-lightbox-caption">
+                    <div id="scoreSnapshotCaption" class="modal-player-lightbox-title">Score snapshot</div>
+                    <button type="button" class="about-cta-btn about-cta-btn--ghost modal-player-lightbox-customize" id="scoreSnapshotDownloadBtn">
+                        Download
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Tier Info Modal -->
     <div class="modal-overlay" id="tierInfoModal" aria-hidden="true">
         <div class="modal modal-tier-info" role="dialog" aria-modal="true" aria-labelledby="tierInfoTitle">
@@ -1022,16 +1038,29 @@
                 <div id="tallyWinnerBar" class="tally-winner-bar"></div>
                 <div class="tally-actions">
                     <button class="btn btn-secondary" id="tallyBackBtn" type="button">← Back</button>
+                    <button class="btn btn-secondary tally-snapshot-btn" id="tallySnapshotBtn" type="button">📸 Snapshot</button>
                     <button class="btn tally-record-btn" id="tallyRecordBtn" type="button">Review win and set date</button>
                 </div>
             </div>
 
             <!-- Stage 3: Celebrate & confirm date -->
             <div id="tallyStage3" class="tally-stage">
-                <div class="tally-celebrate">
-                    <div class="tally-celebrate-crown">👑</div>
-                    <div class="tally-celebrate-name" id="tallyCelebName"></div>
-                    <div class="tally-celebrate-sub" id="tallyCelebSub"></div>
+                <div class="tally-stage3-top">
+                    <div class="tally-celebrate tally-celebrate-left">
+                        <div class="tally-celebrate-crown">👑</div>
+                        <div class="tally-celebrate-name" id="tallyCelebName"></div>
+                        <div class="tally-celebrate-sub" id="tallyCelebSub"></div>
+                    </div>
+                    <div class="tally-snapshot-panel">
+                        <button type="button" class="tally-snapshot-preview-btn" id="tallySnapshotPreviewBtn" title="Open snapshot in new window">
+                            <img id="tallySnapshotPreviewImg" class="tally-snapshot-preview-img" alt="Score snapshot preview">
+                            <span id="tallySnapshotPreviewEmpty" class="tally-snapshot-preview-empty">Generating snapshot…</span>
+                        </button>
+                        <div class="tally-snapshot-actions">
+                            <button type="button" class="btn btn-secondary" id="tallySnapshotDownloadBtn">Download</button>
+                            <button type="button" class="btn btn-secondary" id="tallySnapshotViewBtn">View</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="tally-field">
                     <label class="tally-label">When was this played?</label>

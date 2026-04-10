@@ -163,7 +163,7 @@ export function setupEventListeners() {
 
     // tallyComplete — fired by modals.js when Stage 3 "Save Win" is confirmed
     window.addEventListener('tallyComplete', async (e) => {
-        const { game, winner, date, participants } = e.detail;
+        const { game, winner, date, participants, scoreSnapshotUrl, scoreSnapshotStoragePath } = e.detail;
         const pg = getActivePlaygroup();
         if (!pg) { showLoginPrompt(); return; }
 
@@ -180,7 +180,10 @@ export function setupEventListeners() {
         const uniqueParticipantIds = participantIds.length > 0 ? [...new Set(participantIds)] : null;
 
         try {
-            const row = await insertEntry(pg.id, gameId, playerId, date, uniqueParticipantIds);
+            const row = await insertEntry(pg.id, gameId, playerId, date, uniqueParticipantIds, {
+                score_snapshot_url: scoreSnapshotUrl || null,
+                score_snapshot_storage_path: scoreSnapshotStoragePath || null
+            });
             const entryParticipants = (participants && participants.length > 0 ? participants : [winner]);
             data.entries.push({
                 id: row.id,
@@ -188,6 +191,8 @@ export function setupEventListeners() {
                 player: winner,
                 date,
                 participants: entryParticipants,
+                score_snapshot_url: scoreSnapshotUrl || null,
+                score_snapshot_storage_path: scoreSnapshotStoragePath || null,
                 created_at: row.created_at || new Date().toISOString(),
                 created_by_name: row.created_by_name || null,
                 updated_at: row.updated_at || null,
@@ -744,6 +749,8 @@ async function saveEntry() {
             player: currentEntry.player,
             date: currentEntry.date,
             participants,
+            score_snapshot_url: null,
+            score_snapshot_storage_path: null,
             created_at: row.created_at || new Date().toISOString(),
             created_by_name: row.created_by_name || null,
             updated_at: row.updated_at || null,

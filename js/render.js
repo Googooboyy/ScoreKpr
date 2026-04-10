@@ -14,7 +14,7 @@ import {
     playerIsGuest
 } from './data.js';
 import { deletePlayer, deleteGame, deleteEntryById } from './actions.js';
-import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox } from './modals.js';
+import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox, openScoreSnapshotModal } from './modals.js';
 import { getActivePlaygroup } from './playgroups.js';
 import { fetchGamesFromOtherCampaigns, insertGame, upsertGameMetadata } from './supabase.js';
 
@@ -345,7 +345,12 @@ export function renderGames() {
             '<div class="game-card-image-placeholder">🎲</div>';
         const lastPlayedText = stat.lastPlayed ? 'Last: ' + formatDate(stat.lastPlayed) : 'Never played';
         const historyHtml = stat.history.length > 0 ?
-            stat.history.map(h => '<div class="game-history-item"><span class="game-history-winner">🏆 ' + escapeHtml(h.player) + '</span><span class="game-history-date">' + formatDate(h.date) + '</span></div>').join('') :
+            stat.history.map(h =>
+                '<div class="game-history-item">' +
+                '<div class="game-history-head"><span class="game-history-winner">🏆 ' + escapeHtml(h.player) + '</span><span class="game-history-date">' + formatDate(h.date) + '</span></div>' +
+                _renderSnapshotPanel(h, 'game-history-snapshot') +
+                '</div>'
+            ).join('') :
             '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No games played yet</div>';
 
         return '<div class="game-card-wrapper" data-game="' + escapeHtml(stat.game) + '">' +
@@ -390,6 +395,7 @@ export function renderGames() {
             toggleGameHistory(this.getAttribute('data-game'), this);
         });
     });
+    _bindSnapshotActions(container);
 }
 
 export function toggleGameHistory(game, btn) {
@@ -698,6 +704,58 @@ function relativeTime(isoString) {
     return formatDate(isoString);
 }
 
+function _snapshotFilePart(value, fallback = 'value') {
+    const safe = String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return (safe || fallback).slice(0, 18);
+}
+
+function _buildSnapshotFilenameForEntry(entry) {
+    const game = _snapshotFilePart(entry.game, 'game');
+    const winner = _snapshotFilePart(entry.player, 'winner');
+    const date = (entry.date && /^\d{4}-\d{2}-\d{2}$/.test(entry.date))
+        ? entry.date
+        : new Date().toISOString().slice(0, 10);
+    return `score-snapshot-${game}-${date}-${winner}.png`;
+}
+
+function _renderSnapshotPanel(entry, extraClass = '') {
+    const url = entry.score_snapshot_url || null;
+    const panelClass = ('history-snapshot ' + extraClass).trim();
+    if (!url) {
+        return '<div class="' + panelClass + '">' +
+            '<div class="history-snapshot-status">not available</div>' +
+            '</div>';
+    }
+    return '<div class="' + panelClass + '">' +
+        '<div class="history-snapshot-actions">' +
+        '<button class="history-snapshot-btn history-snapshot-view-btn" data-url="' + escapeHtml(url) + '" data-game="' + escapeHtml(entry.game) + '" data-player="' + escapeHtml(entry.player) + '" data-date="' + escapeHtml(entry.date) + '">View full score</button>' +
+        '</div>' +
+        '</div>';
+}
+
+function _bindSnapshotActions(container) {
+    if (!container) return;
+    container.querySelectorAll('.history-snapshot-view-btn').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const url = this.getAttribute('data-url');
+            if (!url) return;
+            const entry = {
+                game: this.getAttribute('data-game') || 'game',
+                player: this.getAttribute('data-player') || 'winner',
+                date: this.getAttribute('data-date') || ''
+            };
+            const filename = _buildSnapshotFilenameForEntry(entry);
+            const title = `${entry.game} - ${formatDate(entry.date)}`;
+            openScoreSnapshotModal(url, title, filename);
+        });
+    });
+}
+
 export function renderHistory() {
     const container = document.getElementById('historyContainer');
     const toggleBtn = document.getElementById('historyToggleBtn');
@@ -750,6 +808,7 @@ export function renderHistory() {
             '<div class="history-card-info">' +
             '<div class="history-card-game">' + gameThumbHtml + ' ' + escapeHtml(entry.game) + '</div>' +
             '<div class="history-card-details">🏆 ' + escapeHtml(entry.player) + ' • 📅 ' + formatDate(entry.date) + '</div>' +
+            _renderSnapshotPanel(entry) +
             auditHtml +
             '</div>' +
             '<div class="history-card-actions">' +
@@ -771,6 +830,7 @@ export function renderHistory() {
             deleteEntryById(this.getAttribute('data-id'));
         });
     });
+    _bindSnapshotActions(container);
 }
 
 export function toggleHistoryDisplay() {
