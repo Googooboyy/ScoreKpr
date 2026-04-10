@@ -286,6 +286,10 @@ header .subtitle {
 .celebration-pill:active {
     transform: scale(0.98);
 }
+.celebration-pill-icon {
+    flex-shrink: 0;
+    display: block;
+}
 
 /* Screen shake (tremor) — applied to body by JS */
 body.screen-shake {

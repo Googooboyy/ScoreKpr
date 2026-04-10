@@ -24,7 +24,7 @@ import {
     getPublicImageUrl
 } from './supabase.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { showModal, hideModal, handleImageFileSelect, showNotification, fireConfetti, playVictoryFanfare, closeGameImageModal, closePlayerImageModal, resetPlayerCustomization, closeEditEntryModal, saveGameImage, savePlayerImage, saveEditedEntry, closePlayerProfileModal, openScoreTabulator, showJoinRejectionModal, refreshEditWinRecordPlayerLists, syncEditEntryWinnerFromDropdown } from './modals.js';
+import { showModal, hideModal, handleImageFileSelect, showNotification, fireConfetti, closeGameImageModal, closePlayerImageModal, resetPlayerCustomization, closeEditEntryModal, saveGameImage, savePlayerImage, saveEditedEntry, closePlayerProfileModal, openScoreTabulator, showJoinRejectionModal, refreshEditWinRecordPlayerLists, syncEditEntryWinnerFromDropdown } from './modals.js';
 import {
     renderGameSelection,
     renderPlayerSelection,
@@ -39,7 +39,8 @@ import {
     step2Continue,
     toggleGamesDisplay,
     toggleHistoryDisplay,
-    togglePlayersDisplay
+    togglePlayersDisplay,
+    saveLeaderboardSnapshot
 } from './render.js';
 
 // Validates an image URL, shows a preview, and calls callback(url) on success.
@@ -251,7 +252,7 @@ export function setupEventListeners() {
     // Celebration pills (leaderboard section)
     const celebrationConfettiBtn = document.getElementById('celebrationConfettiBtn');
     const celebrationShakeBtn = document.getElementById('celebrationShakeBtn');
-    const celebrationTrumpetBtn = document.getElementById('celebrationTrumpetBtn');
+    const celebrationSnapshotBtn = document.getElementById('celebrationSnapshotBtn');
     if (celebrationConfettiBtn) {
         celebrationConfettiBtn.addEventListener('click', () => {
             const delays = [0, 500, 1000, 1500, 2000];
@@ -264,8 +265,10 @@ export function setupEventListeners() {
             setTimeout(() => document.body.classList.remove('screen-shake'), 2500);
         });
     }
-    if (celebrationTrumpetBtn) {
-        celebrationTrumpetBtn.addEventListener('click', () => playVictoryFanfare());
+    if (celebrationSnapshotBtn) {
+        celebrationSnapshotBtn.addEventListener('click', () => {
+            saveLeaderboardSnapshot();
+        });
     }
     const celebrationRollQuotesBtn = document.getElementById('celebrationRollQuotesBtn');
     if (celebrationRollQuotesBtn) {

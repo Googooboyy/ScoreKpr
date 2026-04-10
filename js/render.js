@@ -14,7 +14,7 @@ import {
     playerIsGuest
 } from './data.js';
 import { deletePlayer, deleteGame, deleteEntryById } from './actions.js';
-import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox, openScoreSnapshotModal } from './modals.js';
+import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox, openScoreSnapshotModal, showNotification } from './modals.js';
 import { getActivePlaygroup } from './playgroups.js';
 import { fetchGamesFromOtherCampaigns, insertGame, upsertGameMetadata } from './supabase.js';
 
@@ -884,4 +884,348 @@ export function resetEntryFlow() {
     uiState.tempPlayerImage = null;
     renderGameSelection();
     renderPlayerSelection();
+}
+
+// ─── Leaderboard snapshot (canvas, same approach as tally score snapshot) ───
+
+const _lbSnapTheme = {
+    bg: '#0a0a0f',
+    panel: '#151520',
+    panelAlt: '#12121a',
+    border: '#2a2a3d',
+    text: '#f3f4f6',
+    textMuted: '#9ca3af',
+    gold: '#f0c34e',
+    barDefault0: '#6366f1',
+    barDefault1: '#8b5cf6'
+};
+
+function _parsePlayersGridLayout(container) {
+    const items = [];
+    for (const child of container.children) {
+        if (child.classList.contains('meeple-section-label')) {
+            items.push({ kind: 'label', text: child.textContent.trim() });
+        } else if (child.classList.contains('player-card')) {
+            items.push({ kind: 'card', el: child });
+        }
+    }
+    return items;
+}
+
+function _leaderboardCardPayloadFromEl(el, isChampion) {
+    const name = el.getAttribute('data-player') || 'Meeple';
+    const quoteEl = el.querySelector('.player-card-quote');
+    const winsEl = el.querySelector('.victory-roster-wins');
+    const imgEl = el.querySelector('img.player-card-image');
+    const style = el.getAttribute('style') || '';
+    let accent = null;
+    const m = style.match(/--player-card-color:\s*([^;]+)/i);
+    if (m) accent = m[1].trim();
+    let imageUrl = null;
+    if (imgEl && imgEl.src && !imgEl.src.startsWith('data:,')) {
+        imageUrl = imgEl.src;
+    }
+    return {
+        playerName: name,
+        quote: quoteEl ? quoteEl.textContent.trim() : '',
+        winsLine: winsEl ? winsEl.textContent.replace(/\s+/g, ' ').trim() : '',
+        imageUrl,
+        isChampion,
+        accent
+    };
+}
+
+function _fillTextTruncated(ctx, text, maxW, x, y) {
+    const s = String(text || '');
+    if (!s) return;
+    if (ctx.measureText(s).width <= maxW) {
+        ctx.fillText(s, x, y);
+        return;
+    }
+    let t = s;
+    while (t.length > 1 && ctx.measureText(t + '…').width > maxW) {
+        t = t.slice(0, -1);
+    }
+    ctx.fillText(t + (t.length < s.length ? '…' : ''), x, y);
+}
+
+function _loadImageForCanvas(url) {
+    return new Promise((resolve) => {
+        if (!url) {
+            resolve(null);
+            return;
+        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+}
+
+function _buildLeaderboardSnapshotCommands(layout) {
+    const commands = [];
+    let idx = 0;
+    let seenFirstCard = false;
+    while (idx < layout.length) {
+        const it = layout[idx];
+        if (it.kind === 'label') {
+            commands.push({ op: 'label', text: it.text });
+            idx++;
+        } else if (it.kind === 'card') {
+            if (!seenFirstCard) {
+                commands.push({ op: 'champion', el: it.el });
+                seenFirstCard = true;
+                idx++;
+            } else {
+                const batch = [];
+                while (idx < layout.length && layout[idx].kind === 'card') {
+                    batch.push(layout[idx].el);
+                    idx++;
+                }
+                commands.push({ op: 'grid', elements: batch });
+            }
+        } else {
+            idx++;
+        }
+    }
+    return commands;
+}
+
+function _measureLeaderboardSnapshot(commands, gap, headerH, championH, cardH, outerPad) {
+    const contentW = 832;
+    let h = outerPad + headerH + gap;
+    for (const c of commands) {
+        if (c.op === 'label') {
+            h += 24 + gap;
+        } else if (c.op === 'champion') {
+            h += championH + gap;
+        } else if (c.op === 'grid') {
+            const n = c.elements.length;
+            const cols = Math.min(3, Math.max(1, n));
+            const rows = Math.ceil(n / cols);
+            h += rows * cardH + Math.max(0, rows - 1) * gap + gap;
+        }
+    }
+    h += outerPad - gap;
+    return { canvasH: h, contentW };
+}
+
+function _drawLeaderboardSnapshotCanvas(commands, imageMap) {
+    const scale = Math.min(2.4, (typeof window !== 'undefined' && window.devicePixelRatio > 1) ? window.devicePixelRatio : 2);
+    const outerPad = 24;
+    const gap = 16;
+    const headerH = 52;
+    const championH = 132;
+    const cardH = 120;
+    const championW = 460;
+    const theme = _lbSnapTheme;
+
+    const { canvasH, contentW } = _measureLeaderboardSnapshot(commands, gap, headerH, championH, cardH, outerPad);
+    const canvasW = outerPad * 2 + contentW;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(canvasW * scale);
+    canvas.height = Math.round(canvasH * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    let y = outerPad;
+    ctx.fillStyle = theme.textMuted;
+    ctx.font = '600 12px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('ScoreKpr · Leaderboard', outerPad, y + 18);
+    ctx.fillStyle = theme.textMuted;
+    ctx.font = '500 11px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText(new Date().toLocaleString(), outerPad, y + 36);
+    y += headerH + gap;
+
+    const drawCard = (x, w, h, payload) => {
+        const r = 12;
+        if (payload.isChampion) {
+            ctx.save();
+            ctx.shadowColor = 'rgba(255, 215, 0, 0.28)';
+            ctx.shadowBlur = 18;
+        }
+        ctx.fillStyle = payload.isChampion ? 'rgba(255, 215, 0, 0.14)' : theme.panel;
+        ctx.strokeStyle = payload.isChampion ? 'rgba(255, 215, 0, 0.55)' : theme.border;
+        ctx.lineWidth = payload.isChampion ? 2 : 1;
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.fill();
+        ctx.stroke();
+        if (payload.isChampion) {
+            ctx.restore();
+        }
+
+        if (payload.accent) {
+            ctx.fillStyle = payload.accent;
+        } else {
+            const g = ctx.createLinearGradient(x, y, x, y + h);
+            g.addColorStop(0, theme.barDefault0);
+            g.addColorStop(1, theme.barDefault1);
+            ctx.fillStyle = g;
+        }
+        ctx.fillRect(x, y, 4, h);
+
+        const avR = payload.isChampion ? 40 : 32;
+        const avCx = x + 16 + avR;
+        const avCy = y + 16 + avR;
+        if (payload.isChampion) {
+            ctx.font = '18px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('👑', avCx, y + 14);
+        }
+
+        const img = payload.imageUrl ? imageMap.get(payload.imageUrl) : null;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avCx, avCy, avR, 0, Math.PI * 2);
+        ctx.clip();
+        if (img) {
+            ctx.drawImage(img, avCx - avR, avCy - avR, avR * 2, avR * 2);
+        } else {
+            ctx.fillStyle = theme.panelAlt;
+            ctx.fillRect(avCx - avR, avCy - avR, avR * 2, avR * 2);
+            ctx.font = `${Math.floor(avR * 1.1)}px "Segoe UI Emoji", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('👤', avCx, avCy);
+        }
+        ctx.restore();
+
+        const textX = x + 16 + avR * 2 + 16;
+        const maxTextW = w - (textX - x) - 14;
+        let ty = y + (payload.isChampion ? 30 : 26);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = theme.text;
+        ctx.font = `700 ${payload.isChampion ? 17 : 15}px Inter, "Segoe UI", Arial, sans-serif`;
+        _fillTextTruncated(ctx, payload.playerName, maxTextW, textX, ty);
+        ty += 22;
+        ctx.fillStyle = theme.textMuted;
+        ctx.font = '500 13px Inter, "Segoe UI", Arial, sans-serif';
+        _fillTextTruncated(ctx, payload.quote, maxTextW, textX, ty);
+        ty += payload.isChampion ? 38 : 34;
+        ctx.fillStyle = payload.isChampion ? theme.gold : theme.textMuted;
+        ctx.font = `${payload.isChampion ? '700' : '600'} ${payload.isChampion ? 15 : 13}px Inter, "Segoe UI", Arial, sans-serif`;
+        _fillTextTruncated(ctx, payload.winsLine, maxTextW, textX, ty);
+    };
+
+    for (const c of commands) {
+        if (c.op === 'label') {
+            ctx.fillStyle = theme.textMuted;
+            ctx.font = '600 11px Inter, "Segoe UI", Arial, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(String(c.text || '').toUpperCase(), outerPad, y + 11);
+            y += 24 + gap;
+        } else if (c.op === 'champion') {
+            const payload = _leaderboardCardPayloadFromEl(c.el, true);
+            const cw = Math.min(championW, contentW);
+            const cx = outerPad + (contentW - cw) / 2;
+            drawCard(cx, cw, championH, payload);
+            y += championH + gap;
+        } else if (c.op === 'grid') {
+            const els = c.elements;
+            const n = els.length;
+            const cols = Math.min(3, Math.max(1, n));
+            const rows = Math.ceil(n / cols);
+            const cardW = (contentW - gap * (cols - 1)) / cols;
+            for (let r = 0; r < rows; r++) {
+                for (let col = 0; col < cols; col++) {
+                    const i = r * cols + col;
+                    if (i >= n) break;
+                    const cx = outerPad + col * (cardW + gap);
+                    const payload = _leaderboardCardPayloadFromEl(els[i], false);
+                    drawCard(cx, cardW, cardH, payload);
+                }
+                y += cardH + gap;
+            }
+        }
+    }
+
+    return canvas;
+}
+
+function _downloadLeaderboardSnapshotBlob(blob, filename, canvasFallback) {
+    if (window.showSaveFilePicker && blob) {
+        return (async () => {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{
+                        description: 'PNG image',
+                        accept: { 'image/png': ['.png'] }
+                    }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            } catch (err) {
+                if (err && err.name === 'AbortError') return;
+                _downloadLeaderboardSnapshotDataUrl(canvasFallback, filename);
+            }
+        })();
+    }
+    _downloadLeaderboardSnapshotDataUrl(canvasFallback, filename);
+    return Promise.resolve();
+}
+
+function _downloadLeaderboardSnapshotDataUrl(canvas, filename) {
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+/** Capture meeple cards as a PNG using Canvas 2D (same pattern as tally score snapshots). */
+export async function saveLeaderboardSnapshot() {
+    const container = document.getElementById('playersContainer');
+    if (!container) return;
+
+    const layout = _parsePlayersGridLayout(container);
+    const cardEls = layout.filter((i) => i.kind === 'card').map((i) => i.el);
+    if (!cardEls.length) {
+        showNotification('No meeple cards on the leaderboard to capture yet.');
+        return;
+    }
+
+    const commands = _buildLeaderboardSnapshotCommands(layout);
+    const urls = new Set();
+    cardEls.forEach((el) => {
+        const p = _leaderboardCardPayloadFromEl(el, false);
+        if (p.imageUrl) urls.add(p.imageUrl);
+    });
+    const imageMap = new Map();
+    await Promise.all([...urls].map(async (u) => {
+        imageMap.set(u, await _loadImageForCanvas(u));
+    }));
+
+    let canvas;
+    try {
+        canvas = _drawLeaderboardSnapshotCanvas(commands, imageMap);
+    } catch (err) {
+        showNotification('Could not create snapshot: ' + (err && err.message ? err.message : String(err)));
+        return;
+    }
+
+    const datePart = new Date().toISOString().slice(0, 10);
+    const filename = `scorekpr-leaderboard-${datePart}.png`;
+
+    await new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                _downloadLeaderboardSnapshotDataUrl(canvas, filename);
+                resolve();
+                return;
+            }
+            _downloadLeaderboardSnapshotBlob(blob, filename, canvas).then(resolve).catch(resolve);
+        }, 'image/png');
+    });
 }
