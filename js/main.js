@@ -6,7 +6,7 @@ import { onAuthStateChange, getSession, getInviteTokenFromStorage, saveInviteTok
 function hasInviteToken() {
     return !!getInviteTokenFromUrl() || !!getInviteTokenFromStorage();
 }
-import { loadPlaygroups, setActivePlaygroup, setOnPlaygroupChange, setupPlaygroupUI, getActivePlaygroup, ensureLastCampaignSelected, updateUserPlanLabelFromTier } from './playgroups.js';
+import { loadPlaygroups, setActivePlaygroup, setOnPlaygroupChange, setupPlaygroupUI, getActivePlaygroup, ensureLastCampaignSelected, updateUserPlanLabelFromTier, updatePlaygroupCountBadge } from './playgroups.js';
 import { setupAuthButtons, updateAuthUI, updateEditability, syncReadOnlyBanner, updateAdminUI } from './auth-ui.js';
 import { redeemInviteToken, resolveInviteToken, fetchPlaygroupName, fetchActiveAnnouncement, fetchActivePersonalMessage, fetchAppConfig, fetchUserProfile, ensureUserTier, fetchUserTier, fetchCampaignJoinInfo, fetchTierDefinition } from './supabase.js';
 import { showNotification, fireConfetti } from './modals.js';
@@ -120,6 +120,7 @@ async function loadBetaLimits() {
         window._scorekeeperBggSearchEnabled = config.bgg_search_enabled !== 'false';
         window._scorekeeperShowCampaignAcceptsText = config.show_campaign_accepts_text !== 'false';
         renderAll();
+        await updatePlaygroupCountBadge();
     } catch {}
 }
 

@@ -238,7 +238,7 @@ export async function fetchGamesFromOtherCampaigns(currentPlaygroupId, currentGa
 export async function fetchPlayers(playgroupId) {
     const { data, error } = await getActiveClient()
         .from('players')
-        .select('id, name, user_id')
+        .select('id, name, user_id, is_guest')
         .eq('playgroup_id', playgroupId)
         .order('name');
 
@@ -437,6 +437,8 @@ export async function fetchEntries(playgroupId) {
             updated_at,
             created_by_name,
             updated_by_name,
+            score_snapshot_url,
+            score_snapshot_storage_path,
             games!inner(name),
             players!inner(name)
         `)
@@ -452,6 +454,8 @@ export async function fetchEntries(playgroupId) {
         updated_at: row.updated_at || null,
         created_by_name: row.created_by_name || null,
         updated_by_name: row.updated_by_name || null,
+        score_snapshot_url: row.score_snapshot_url || null,
+        score_snapshot_storage_path: row.score_snapshot_storage_path || null,
         game: row.games?.name || '',
         player: row.players?.name || ''
     }));
@@ -541,7 +545,7 @@ export async function loadPlaygroupData(playgroupId) {
     } catch (err) {
         // Fallback if migration 030 not applied: use fetchPlayers (tier pills won't show)
         players = await fetchPlayers(playgroupId);
-        players.forEach(p => { p.tier = 1; });
+        players.forEach(p => { p.tier = 1; if (p.is_guest == null) p.is_guest = false; });
     }
     const [games, entries, participantsByEntry] = await Promise.all([
         fetchGames(playgroupId),
@@ -583,11 +587,12 @@ export async function loadPlaygroupData(playgroupId) {
         }
     });
 
-    // Merge user_id and tier into playerData so profile modal and player cards can access them
+    // Merge user_id, tier, and guest flag into playerData
     players.forEach(p => {
         if (!playerData[p.name]) playerData[p.name] = {};
         playerData[p.name].userId = p.user_id || null;
         playerData[p.name].tier = p.tier != null ? p.tier : 1;
+        playerData[p.name].isGuest = !!(p.is_guest);
     });
 
     // Merge participants into each entry
@@ -624,12 +629,14 @@ export async function insertGame(playgroupId, name, globalGameId = null) {
 }
 
 /**
- * Insert a new player
+ * Insert a new player. Pass { isGuest: true } for guest meeples (unlinked roster row).
  */
-export async function insertPlayer(playgroupId, name) {
+export async function insertPlayer(playgroupId, name, options = {}) {
+    const row = { playgroup_id: playgroupId, name };
+    if (options.isGuest) row.is_guest = true;
     const { data, error } = await getActiveClient()
         .from('players')
-        .insert({ playgroup_id: playgroupId, name })
+        .insert(row)
         .select()
         .single();
 
@@ -652,8 +659,10 @@ async function getCurrentUserName() {
  * Insert a new entry (win record). Optionally pass participantIds (including winner).
  * If omitted, defaults to [playerId] (winner only).
  */
-export async function insertEntry(playgroupId, gameId, playerId, date, participantIds = null) {
+export async function insertEntry(playgroupId, gameId, playerId, date, participantIds = null, options = {}) {
     const createdByName = await getCurrentUserName();
+    const snapshotUrl = options?.score_snapshot_url || null;
+    const snapshotStoragePath = options?.score_snapshot_storage_path || null;
     const { data, error } = await getActiveClient()
         .from('entries')
         .insert({
@@ -661,7 +670,9 @@ export async function insertEntry(playgroupId, gameId, playerId, date, participa
             game_id: gameId,
             player_id: playerId,
             date,
-            created_by_name: createdByName
+            created_by_name: createdByName,
+            score_snapshot_url: snapshotUrl,
+            score_snapshot_storage_path: snapshotStoragePath
         })
         .select()
         .single();
@@ -853,7 +864,17 @@ export async function importPlaygroupData(playgroupId, imported) {
             const participantIds = (entry.participants || [])
                 .map(name => playerIds[name])
                 .filter(Boolean);
-            await insertEntry(playgroupId, gid, pid, entry.date, participantIds.length > 0 ? participantIds : null);
+            await insertEntry(
+                playgroupId,
+                gid,
+                pid,
+                entry.date,
+                participantIds.length > 0 ? participantIds : null,
+                {
+                    score_snapshot_url: entry.score_snapshot_url || null,
+                    score_snapshot_storage_path: entry.score_snapshot_storage_path || null
+                }
+            );
         }
     }
 }
@@ -938,14 +959,25 @@ export async function fetchUserTier() {
     return { tier: (data?.tier ?? 1) };
 }
 
-/** Fetch user_id -> tier map (admin only). */
+/** Coerce DB/postgrest tier to 1|2|3 (values may arrive as string). */
+function coerceUserTierInt(raw) {
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 3 ? n : 1;
+}
+
+/** Fetch user_id -> tier map (admin only). Keys are lowercase UUID strings; values are integers 1–3. */
 export async function fetchUserTiersMap() {
     const ac = getAdminClient();
     if (!ac) throw new Error('Admin client not available');
     const { data, error } = await ac.from('user_tiers')
         .select('user_id, tier');
     if (error) throw error;
-    return Object.fromEntries((data || []).map(r => [r.user_id, r.tier]));
+    const _rows = data || [];
+    const _map = Object.fromEntries(_rows.map(r => {
+        const k = String(r.user_id || '').toLowerCase();
+        return [k, coerceUserTierInt(r.tier)];
+    }));
+    return _map;
 }
 
 /** Update a user's tier (admin only). */
@@ -984,7 +1016,8 @@ export async function fetchCampaignJoinInfo(playgroupId) {
         travellers: row?.travellers ?? 0,
         tier1Count: row?.tier_1_count ?? 0,
         tier2Count: row?.tier_2_count ?? 0,
-        tier3Count: row?.tier_3_count ?? 0
+        tier3Count: row?.tier_3_count ?? 0,
+        guestMeeplesCount: row?.guest_meeples_count ?? 0
     };
 }
 
@@ -1169,6 +1202,25 @@ export async function sendPersonalMessages(userIds, message, daysToPersist) {
 }
 
 /**
+ * Clear active personal messages for the given users by expiring them.
+ * Does not delete history; it just sets expires_at to now or earlier.
+ * Admin only.
+ * @param {string[]} userIds - User IDs to clear messages for
+ */
+export async function clearPersonalMessages(userIds) {
+    const ac = getAdminClient();
+    if (!ac) throw new Error('Admin client not available');
+    if (!Array.isArray(userIds) || !userIds.length) return;
+    const now = new Date().toISOString();
+    const { error } = await ac
+        .from('user_personal_messages')
+        .update({ expires_at: now })
+        .in('user_id', userIds)
+        .gt('expires_at', now);
+    if (error) throw error;
+}
+
+/**
  * Fetch last personal message date per user. Admin only.
  * Returns map of userId -> lastMessageAt (ISO string).
  */
@@ -1267,7 +1319,7 @@ export async function fetchAllEntries() {
     const ac = getAdminClient();
     if (!ac) throw new Error('Admin client not available');
     const { data, error } = await ac.from('entries')
-        .select('id, date, created_at, updated_at, created_by_name, updated_by_name, game_id, player_id, playgroup_id')
+        .select('id, date, created_at, updated_at, created_by_name, updated_by_name, score_snapshot_url, score_snapshot_storage_path, game_id, player_id, playgroup_id')
         .order('date', { ascending: false });
     if (error) throw error;
     return data || [];
@@ -1342,6 +1394,15 @@ export async function linkGameToGlobal(gameId, globalGameId, canonicalName = nul
     }
     const { error } = await ac.from('games')
         .update(updates)
+        .eq('id', gameId);
+    if (error) throw error;
+}
+
+export async function adminUnlinkGameFromGlobal(gameId) {
+    const ac = getAdminClient();
+    if (!ac) throw new Error('Admin client not available');
+    const { error } = await ac.from('games')
+        .update({ global_game_id: null })
         .eq('id', gameId);
     if (error) throw error;
 }

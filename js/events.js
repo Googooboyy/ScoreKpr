@@ -24,11 +24,12 @@ import {
     getPublicImageUrl
 } from './supabase.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { showModal, hideModal, handleImageFileSelect, showNotification, fireConfetti, playVictoryFanfare, closeGameImageModal, closePlayerImageModal, resetPlayerCustomization, closeEditEntryModal, saveGameImage, savePlayerImage, saveEditedEntry, closePlayerProfileModal, openScoreTabulator, showJoinRejectionModal } from './modals.js';
+import { showModal, hideModal, handleImageFileSelect, showNotification, fireConfetti, closeGameImageModal, closePlayerImageModal, resetPlayerCustomization, closeEditEntryModal, saveGameImage, savePlayerImage, saveEditedEntry, closePlayerProfileModal, openScoreTabulator, showJoinRejectionModal, refreshEditWinRecordPlayerLists, syncEditEntryWinnerFromDropdown } from './modals.js';
 import {
     renderGameSelection,
     renderPlayerSelection,
     renderPlayers,
+    renderAll,
     rollQuotesWave,
     selectGame,
     selectPlayer,
@@ -38,7 +39,8 @@ import {
     step2Continue,
     toggleGamesDisplay,
     toggleHistoryDisplay,
-    togglePlayersDisplay
+    togglePlayersDisplay,
+    saveLeaderboardSnapshot
 } from './render.js';
 
 // Validates an image URL, shows a preview, and calls callback(url) on success.
@@ -162,7 +164,7 @@ export function setupEventListeners() {
 
     // tallyComplete — fired by modals.js when Stage 3 "Save Win" is confirmed
     window.addEventListener('tallyComplete', async (e) => {
-        const { game, winner, date, participants } = e.detail;
+        const { game, winner, date, participants, scoreSnapshotUrl, scoreSnapshotStoragePath } = e.detail;
         const pg = getActivePlaygroup();
         if (!pg) { showLoginPrompt(); return; }
 
@@ -179,7 +181,10 @@ export function setupEventListeners() {
         const uniqueParticipantIds = participantIds.length > 0 ? [...new Set(participantIds)] : null;
 
         try {
-            const row = await insertEntry(pg.id, gameId, playerId, date, uniqueParticipantIds);
+            const row = await insertEntry(pg.id, gameId, playerId, date, uniqueParticipantIds, {
+                score_snapshot_url: scoreSnapshotUrl || null,
+                score_snapshot_storage_path: scoreSnapshotStoragePath || null
+            });
             const entryParticipants = (participants && participants.length > 0 ? participants : [winner]);
             data.entries.push({
                 id: row.id,
@@ -187,6 +192,8 @@ export function setupEventListeners() {
                 player: winner,
                 date,
                 participants: entryParticipants,
+                score_snapshot_url: scoreSnapshotUrl || null,
+                score_snapshot_storage_path: scoreSnapshotStoragePath || null,
                 created_at: row.created_at || new Date().toISOString(),
                 created_by_name: row.created_by_name || null,
                 updated_at: row.updated_at || null,
@@ -245,7 +252,7 @@ export function setupEventListeners() {
     // Celebration pills (leaderboard section)
     const celebrationConfettiBtn = document.getElementById('celebrationConfettiBtn');
     const celebrationShakeBtn = document.getElementById('celebrationShakeBtn');
-    const celebrationTrumpetBtn = document.getElementById('celebrationTrumpetBtn');
+    const celebrationSnapshotBtn = document.getElementById('celebrationSnapshotBtn');
     if (celebrationConfettiBtn) {
         celebrationConfettiBtn.addEventListener('click', () => {
             const delays = [0, 500, 1000, 1500, 2000];
@@ -258,8 +265,10 @@ export function setupEventListeners() {
             setTimeout(() => document.body.classList.remove('screen-shake'), 2500);
         });
     }
-    if (celebrationTrumpetBtn) {
-        celebrationTrumpetBtn.addEventListener('click', () => playVictoryFanfare());
+    if (celebrationSnapshotBtn) {
+        celebrationSnapshotBtn.addEventListener('click', () => {
+            saveLeaderboardSnapshot();
+        });
     }
     const celebrationRollQuotesBtn = document.getElementById('celebrationRollQuotesBtn');
     if (celebrationRollQuotesBtn) {
@@ -390,6 +399,36 @@ export function setupEventListeners() {
 
     document.getElementById('editEntryCancel').addEventListener('click', closeEditEntryModal);
     document.getElementById('editEntrySave').addEventListener('click', saveEditedEntry);
+    const editPlayerSelect = document.getElementById('editPlayerSelect');
+    if (editPlayerSelect) {
+        editPlayerSelect.addEventListener('change', () => syncEditEntryWinnerFromDropdown());
+    }
+    async function handleEditEntryInlineAdd(isGuest) {
+        const input = document.getElementById('editEntryNewPlayerName');
+        const name = (input && input.value || '').trim();
+        if (!name) {
+            showNotification('Please enter a meeple name');
+            return;
+        }
+        if (!uiState.currentEditId) return;
+        try {
+            await createPlaygroupPlayer(name, { isGuest });
+            if (input) input.value = '';
+            const parts = uiState.editEntryParticipants;
+            if (parts && !parts.includes(name)) parts.push(name);
+            refreshEditWinRecordPlayerLists(parts);
+            syncEditEntryWinnerFromDropdown();
+            saveData();
+            renderAll();
+        } catch (err) {
+            const msg = err && err.message ? err.message : String(err);
+            showNotification(msg === 'This meeple already exists' ? msg : 'Could not add meeple: ' + msg);
+        }
+    }
+    const editAddMeeple = document.getElementById('editEntryAddMeepleBtn');
+    const editAddGuest = document.getElementById('editEntryAddGuestBtn');
+    if (editAddMeeple) editAddMeeple.addEventListener('click', () => handleEditEntryInlineAdd(false));
+    if (editAddGuest) editAddGuest.addEventListener('click', () => handleEditEntryInlineAdd(true));
     document.getElementById('editEntryModal').addEventListener('click', function (e) {
         if (e.target === document.getElementById('editEntryModal')) closeEditEntryModal();
     });
@@ -587,7 +626,8 @@ export async function showNewPlayerInput() {
     const isCommoner = tier === 1;
 
     if (sourceRow) sourceRow.style.display = isCommoner ? 'none' : '';
-    if (presetSection) presetSection.style.display = isCommoner ? '' : 'none';
+    /* Preset avatars for every tier; file/URL upload remains Noble+ only (sourceRow above). */
+    if (presetSection) presetSection.style.display = '';
     if (presetGrid) presetGrid.innerHTML = '';
 
     uiState.tempPlayerImage = null;
@@ -596,7 +636,7 @@ export async function showNewPlayerInput() {
     const fileInput = document.getElementById('newPlayerImage');
     if (fileInput) fileInput.value = '';
 
-    if (isCommoner && presetGrid) {
+    if (presetGrid) {
         try {
             const presets = await fetchPresetAvatars();
             presetGrid.innerHTML = presets.map((a, i) => `<button type="button" class="preset-avatar-option" data-idx="${i}" title="${(a.label || '').replace(/"/g, '&quot;')}"><img src="${a.image_url}" alt=""></button>`).join('');
@@ -619,6 +659,25 @@ export async function showNewPlayerInput() {
     document.getElementById('newPlayerName').focus();
 }
 
+/**
+ * Create a campaign meeple row and update in-memory data (caller should saveData after extra metadata).
+ * @param {string} name
+ * @param {{ isGuest?: boolean }} [options]
+ */
+export async function createPlaygroupPlayer(name, options = {}) {
+    const pg = getActivePlaygroup();
+    if (!pg) throw new Error('No active campaign');
+    const trimmed = (name || '').trim();
+    if (!trimmed) throw new Error('Please enter a meeple name');
+    if (data.players.includes(trimmed)) throw new Error('This meeple already exists');
+    const row = await insertPlayer(pg.id, trimmed, { isGuest: !!options.isGuest });
+    data.players.push(trimmed);
+    data._playerIdByName[trimmed] = row.id;
+    if (!data.playerData) data.playerData = {};
+    data.playerData[trimmed] = { ...(data.playerData[trimmed] || {}), isGuest: !!options.isGuest };
+    return row;
+}
+
 async function addNewPlayer() {
     const pg = getActivePlaygroup();
     if (!pg) { showLoginPrompt(); return; }
@@ -629,9 +688,7 @@ async function addNewPlayer() {
     /* Unlinked meeples have no limit. Passport (entry + size) is checked only when a user claims. */
 
     try {
-        const row = await insertPlayer(pg.id, name);
-        data.players.push(name);
-        data._playerIdByName[name] = row.id;
+        const row = await createPlaygroupPlayer(name, { isGuest: false });
         let img = uiState.tempPlayerImage;
         const color = uiState.selectedColor;
         let storagePath = null;
@@ -695,6 +752,8 @@ async function saveEntry() {
             player: currentEntry.player,
             date: currentEntry.date,
             participants,
+            score_snapshot_url: null,
+            score_snapshot_storage_path: null,
             created_at: row.created_at || new Date().toISOString(),
             created_by_name: row.created_by_name || null,
             updated_at: row.updated_at || null,

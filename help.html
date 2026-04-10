@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Help — The Scorekeeper</title>
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="apple-mobile-web-app-title" content="ScoreKpr">
+    <title>Help — ScoreKpr</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&display=swap">
     <link rel="stylesheet" href="styles.css">
     <style>
@@ -171,6 +178,7 @@
                     <li><a href="#select-game" class="help-toc-link pl-4">2.1 Select Game</a></li>
                     <li><a href="#select-winner" class="help-toc-link pl-4">2.2 Select Winner &amp; Players</a></li>
                     <li><a href="#select-date" class="help-toc-link pl-4">2.3 Select Date</a></li>
+                    <li><a href="#guest-meeples" class="help-toc-link pl-4">2.4 Guest Meeples</a></li>
                     <li><a href="#leaderboard" class="help-toc-link">3. Leaderboard</a></li>
                     <li><a href="#meeple-cards" class="help-toc-link pl-4">3.1 Meeple Cards</a></li>
                     <li><a href="#top-games" class="help-toc-link pl-4">3.2 Top Games</a></li>
@@ -214,7 +222,7 @@
                         <div class="help-hero-card">
                             <div class="help-hero-card-icon">🎲</div>
                             <h3>Add Wins</h3>
-                            <p>Three steps: game, winner, date. Done.</p>
+                            <p>Game, winner &amp; players, date — optional who else played.</p>
                         </div>
                         <div class="help-hero-card">
                             <div class="help-hero-card-icon">👑</div>
@@ -254,7 +262,7 @@
 
                     <div id="join-campaign">
                         <h3>1.3 Join a Campaign</h3>
-                        <p>Ask your host for the invite link. Open it, view the leaderboard, then click <strong>Join campaign</strong> (or sign in first if prompted).</p>
+                        <p>Ask your host for the invite link. When guest viewing is enabled, you can open the link and browse the leaderboard without signing in. To add wins or join the roster, sign in and use <strong>Join campaign</strong> or <strong>Login and join campaign</strong> as shown on the page.</p>
                     </div>
                 </section>
 
@@ -266,19 +274,25 @@
 
                     <div id="select-game">
                         <h3>2.1 Select Game</h3>
-                        <p>Go to <strong>Add a Win</strong>. Pick a game from the grid or click <strong>+ Add New Game</strong> to add one. You can upload an image or paste a URL. BoardGameGeek (BGG) search when adding games is a future feature.</p>
+                        <p>Go to <strong>Add a Win</strong>. Pick a game from the grid or click <strong>+ Add New Game</strong>. When adding a game, type at least three characters in the name field to see <strong>BoardGameGeek</strong> suggestions — pick one to fill the name and artwork, or ignore them and type your own title. You can still upload an image or paste a URL. If suggestions never appear, BGG search may be turned off for the app or BoardGameGeek may be busy; add the game manually and try again later.</p>
                         <div class="help-img-placeholder">Screenshot: Game selection</div>
                         <div class="help-video-placeholder">Video walkthrough coming soon</div>
                     </div>
 
                     <div id="select-winner">
                         <h3>2.2 Select Winner &amp; Players</h3>
-                        <p>Choose the meeple who won. Optionally select who else played. Add new meeples with <strong>+ Add Meeple</strong>.</p>
+                        <p>Tap the meeple who won, then optionally tap anyone else who played. Your <strong>core</strong> campaign meeples appear in the main grid. If the campaign has <strong>guest meeples</strong>, they appear in a separate <strong>Guest meeples</strong> row below, each with a <strong>Guest</strong> badge. Use <strong>+ Add Meeple</strong> to add a new name to the <strong>core</strong> roster from this step. To add a <strong>guest</strong> meeple to the campaign, use <strong>Edit Win Record</strong> (see §5.2 and §2.4).</p>
                     </div>
 
                     <div id="select-date">
                         <h3>2.3 Select Date</h3>
                         <p>Pick the date the game was played, then hit <strong>Save Win 🎉</strong>. Use <strong>Back</strong> to change game or winner.</p>
+                    </div>
+
+                    <div id="guest-meeples">
+                        <h3>2.4 Guest Meeples</h3>
+                        <p><strong>Guest meeples</strong> are real campaign names marked as guests: they earn wins and show up in stats like anyone else, but they stay in their own row in the UI so occasional players are not mixed in with your main roster. They do not use linked-account slots and are excluded from the header <strong>Travellers</strong> count (that line counts unlinked <em>core</em> meeples only).</p>
+                        <p><strong>Tally Scores</strong> also has <strong>Add guest meeple…</strong> for names not on the roster yet (see §4.1). Those exist only for that tally. If a tally guest <strong>wins</strong>, you confirm with <strong>Add to Campaign &amp; Record</strong> and they are added as a <strong>core</strong> meeple — not as a roster Guest meeple. Other tally-only names are not kept on the saved win. Roster Guest meeples come from <strong>Edit Win Record</strong> → <strong>Add guest</strong>, as in §5.2.</p>
                     </div>
                 </section>
 
@@ -290,7 +304,7 @@
 
                     <div id="meeple-cards">
                         <h3>3.1 Meeple Cards</h3>
-                        <p>Each card shows wins and top games. The #1 player gets the golden card. Click a meeple to open their profile.</p>
+                        <p>Each card shows wins and top games. The #1 player gets the golden card. Click a meeple to open their profile. Core meeples fill the main leaderboard; <strong>Guest meeples</strong> appear in their own section below with a <strong>Guest</strong> badge when you have any.</p>
                         <div class="help-img-placeholder">Screenshot: Leaderboard cards</div>
                     </div>
 
@@ -307,7 +321,7 @@
 
                     <div id="celebration-pills">
                         <h3>3.4 Celebration Pills</h3>
-                        <p>Use Confetti, Shake, Fanfare, or Roll Quotes for a bit of fun when viewing the leaderboard.</p>
+                        <p>Use Confetti, Shake, Snapshot (save an image of the meeple cards), or Roll Quotes for a bit of fun when viewing the leaderboard.</p>
                     </div>
                 </section>
 
@@ -319,7 +333,7 @@
 
                     <div id="tally-setup">
                         <h3>4.1 Setup</h3>
-                        <p>Click <strong>Tally Scores</strong> in the nav. Pick a game and who's playing (2+ meeples). Add guests if needed. Click <strong>Start Tally</strong>.</p>
+                        <p>Click <strong>Tally Scores</strong> in the nav. Pick a game and who's playing (2+ meeples). Use <strong>Add guest meeple…</strong> for someone not on the roster yet — they stay on the score sheet for this session only. If they end up winning, the flow offers <strong>Add to Campaign &amp; Record</strong> and adds them as a <strong>core</strong> meeple (see §2.4). Click <strong>Start Tally</strong>.</p>
                         <div class="help-img-placeholder">Screenshot: Tally setup</div>
                     </div>
 
@@ -331,7 +345,7 @@
 
                     <div id="tally-record">
                         <h3>4.3 Record Winner</h3>
-                        <p>When done, click <strong>Review win and set date</strong>. Confirm the winner, pick a date, then <strong>Save Win 🎉</strong>.</p>
+                        <p>When done, click <strong>Review win and set date</strong>. Confirm the winner, pick a date, then <strong>Save Win 🎉</strong>. A score-sheet image can be generated and stored with the entry so it appears in History (see §5.1).</p>
                     </div>
                 </section>
 
@@ -343,18 +357,18 @@
 
                     <div id="view-entries">
                         <h3>5.1 View Entries</h3>
-                        <p>Open the <strong>History</strong> tab to see all wins. Each entry shows game, winner, date, and who played.</p>
+                        <p>Open the <strong>History</strong> tab to see all wins. Each entry shows game, winner, date, and who played. Wins recorded with <strong>Tally Scores</strong> may include <strong>View full score</strong> — open it to see the saved score snapshot image for that game.</p>
                     </div>
 
                     <div id="edit-win">
                         <h3>5.2 Edit a Win</h3>
-                        <p>Click the ⚙️ icon on any entry. Update game, winner, date, or participants. Edits are stamped with who changed what and when.</p>
+                        <p>Click the ⚙️ icon on any entry to open <strong>Edit Win Record</strong>. Change the game, <strong>Victorious Meeple</strong>, date, and who played. Participants are grouped into core meeples and <strong>Guest meeples</strong>; the winner dropdown uses the same groupings. Type a new name and click <strong>Add meeple</strong> (core roster) or <strong>Add guest</strong> (guest meeple), then toggle who played. Save with <strong>Save Changes</strong>. Edits are stamped with who changed what and when.</p>
                         <div class="help-img-placeholder">Screenshot: Edit entry</div>
                     </div>
 
                     <div id="participants">
                         <h3>5.3 Participants</h3>
-                        <p>When adding or editing a win, you can mark who played (not just the winner). This powers games-played and win-rate stats.</p>
+                        <p>When adding or editing a win, you can mark who played (not just the winner). That drives games-played and win-rate stats for both core and guest meeples. Guest meeples behave like other names for wins and history; only the header <strong>Travellers</strong> line and roster layout treat them differently (see §2.4).</p>
                     </div>
                 </section>
 
@@ -391,7 +405,7 @@
 
                     <div id="meeple-custom">
                         <h3>7.1 Meeple Customisation</h3>
-                        <p>Click a meeple card, then <strong>Customize meeple</strong>. <strong>Commoners</strong> choose from preset avatars. <strong>Nobles</strong> and <strong>Royals</strong> can upload a custom photo (file or URL) or pick a preset. All tiers can pick a colour. Changes apply to the leaderboard card.</p>
+                        <p>Click a meeple card, then <strong>Customize Meeple</strong> (or <strong>⚙️ Customize</strong> in the profile). <strong>Commoners</strong> choose from preset avatars. <strong>Nobles</strong> and <strong>Royals</strong> can upload a custom photo (file or URL) or pick a preset. All tiers can pick a colour. Changes apply to the leaderboard card.</p>
                         <div class="help-video-placeholder">Video walkthrough coming soon</div>
                     </div>
 
@@ -402,7 +416,7 @@
 
                     <div id="favourite-quotes">
                         <h3>7.3 Favourite Quotes</h3>
-                        <p>Linked meeples can pick a favourite quote to show on their card. Use the quote selector in the Customize meeple modal.</p>
+                        <p>Linked meeples can pick a favourite quote to show on their card. Use the quote selector in the <strong>Customize Meeple</strong> modal.</p>
                     </div>
                 </section>
 
@@ -419,7 +433,7 @@
 
                     <div id="plan-summary">
                         <h3>8.2 Plan Summary Pills</h3>
-                        <p>When signed in, the header shows small pills: your tier name, campaigns used (e.g. 1/2), and party permit (max meeples for the current campaign). These help you see your limits at a glance.</p>
+                        <p>When signed in, the header shows small pills: your tier name, campaigns used (e.g. 1/2), and party permit (max meeples for the current campaign). These help you see your limits at a glance. The campaign summary line mentions <strong>Travellers</strong> (unlinked <em>core</em> meeples) and your tiered <strong>active party</strong>; <strong>guest meeples</strong> are not counted as Travellers (see §2.4).</p>
                     </div>
 
                     <div id="campaign-join-requirements">
@@ -442,6 +456,7 @@
                 <section id="troubleshooting" class="help-section">
                     <h2>10. Troubleshooting</h2>
                     <p><strong>Stuck or seeing old data?</strong> Try logging out and back in, or refresh the page (Ctrl+F5 or Cmd+Shift+R to bypass cache). Clearing browser cache can also fix display or loading issues.</p>
+                    <p><strong>BGG suggestions missing or failing?</strong> You need at least three characters in the game name; the feature can be disabled by operators. BoardGameGeek may rate-limit or be temporarily unavailable — add the game manually and try search again later.</p>
                 </section>
 
                 <footer class="help-page-footer">

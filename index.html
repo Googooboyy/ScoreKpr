@@ -3,11 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="apple-mobile-web-app-title" content="ScoreKpr">
     <meta name="google-site-verification" content="L6qndWRGRXnro5ZDDHTrEwXOVDEPJha7dn_znKxewL4" />
-    <title>The Scorekeeper</title>
+    <title>ScoreKpr — The friendly rivalry tracker</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&display=swap">
     <link rel="stylesheet" href="styles.css">
-    <link rel="icon" href="favicon.ico">
 </head>
 <body class="read-only">
     <div class="container">
@@ -82,7 +88,7 @@
         </header>
 
         <nav class="nav-tabs">
-            <button class="nav-tab nav-tab-about active" data-section="about" title="About The Scorekeeper">About</button>
+            <button class="nav-tab nav-tab-about active" data-section="about" title="About ScoreKpr">About</button>
             <button class="nav-tab" data-section="dashboard">Leaderboard</button>
             <button class="nav-tab" data-section="add">Add a Game Win</button>
             <button class="nav-tab nav-tab-tally" id="tallyLaunchBtn" type="button">Tally Scores</button>
@@ -113,7 +119,7 @@
                 </div>
             </div>
             <div id="dashboardGuestPrompt" class="dashboard-guest-prompt" style="display: none;">
-                <img src="logo-scorekpr/grok-imagine-meeple-crown-trophy.jpg" alt="ScoreKpr" class="dashboard-guest-logo">
+                <img src="logo-scorekpr/ScoreKpr_logo.png" alt="ScoreKpr" class="dashboard-guest-logo">
                 <button type="button" class="about-cta-btn dashboard-guest-login-btn" id="dashboardGuestLoginBtn">Log in to add wins, players and games!</button>
             </div>
             <div id="playersContainer" class="players-grid"></div>
@@ -121,7 +127,10 @@
             <div class="celebration-pills" aria-label="Celebration effects">
                 <button type="button" class="celebration-pill" id="celebrationConfettiBtn" title="Confetti from above">🎊 Confetti</button>
                 <button type="button" class="celebration-pill" id="celebrationShakeBtn" title="Screen tremor">📳 Shake</button>
-                <button type="button" class="celebration-pill" id="celebrationTrumpetBtn" title="Victory fanfare">🎺 Fanfare</button>
+                <button type="button" class="celebration-pill" id="celebrationSnapshotBtn" title="Save an image of the meeple cards">
+                    <svg class="celebration-pill-icon" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    Snapshot
+                </button>
                 <button type="button" class="celebration-pill" id="celebrationRollQuotesBtn" title="Randomise quotes on all cards">🎲 Roll Quotes</button>
             </div>
 
@@ -187,8 +196,12 @@
                         <h2>Select Winner & Players</h2>
                         <p>Who won? Who else played? (optional)</p>
                     </div>
-                    <div id="playerSelection" class="selection-grid selection-grid-meeple">
-                        <div class="selection-item add-new-btn" id="showNewPlayerBtn">+ Add Meeple</div>
+                    <div class="player-selection-stack">
+                        <div id="playerSelection" class="selection-grid selection-grid-meeple">
+                            <div class="selection-item add-new-btn" id="showNewPlayerBtn">+ Add Meeple</div>
+                        </div>
+                        <div id="playerSelectionGuestLabel" class="meeple-section-label" style="display: none;">Guest meeples</div>
+                        <div id="playerSelectionGuests" class="selection-grid selection-grid-meeple player-selection-guest-grid" style="display: none;"></div>
                     </div>
                     <div id="newPlayerInput" class="new-item-input">
                         <input type="text" id="newPlayerName" class="input-field" placeholder="Enter meeple name...">
@@ -286,7 +299,7 @@
                 <div class="about-hero-content">
                     <div class="about-beta-pill">🧪 Public Beta · v0.9.5 — Free while we build</div>
                     <div class="about-hero-logo">
-                        <video class="about-hero-logo-video" src="logo-scorekpr/grok-imagine-meeple-crown-trophy_MOVIE01.mp4" autoplay muted playsinline></video>
+                        <video class="about-hero-logo-video" src="logo-scorekpr/ScoreKpr_animated_logo.mp4" autoplay muted playsinline></video>
                     </div>
                     <p class="about-hero-sub">The friendly rivalry tracker for your board game nights, tabletop campaigns, and game-obsessed friend groups.</p>
                     <!-- Logged-out CTA -->
@@ -400,7 +413,7 @@
                     </details>
                     <details class="footer-accordion-item">
                         <summary>Is it free?</summary>
-                        <p>The Scorekeeper is currently in <strong>Beta</strong> — so everything is free, no paywalls, no limits. Paid tier memberships with extra features are on the roadmap, but a free version will always exist. Everyone deserves bragging rights. <a href="roadmap.html">See our roadmap →</a></p>
+                        <p>ScoreKpr is currently in <strong>Beta</strong> — so everything is free, no paywalls, no limits. Paid tier memberships with extra features are on the roadmap, but a free version will always exist. Everyone deserves bragging rights. <a href="roadmap.html">See our roadmap →</a></p>
                     </details>
                     <details class="footer-accordion-item">
                         <summary>Do I need an account to view scores?</summary>
@@ -562,7 +575,7 @@
                 </div>
             </div>
             <div class="footer-bottom">
-                <span class="footer-copy">© 2026 Mar.sg &nbsp;·&nbsp; <span class="footer-version">v0.9.5 Beta</span></span>
+                <span class="footer-copy">© 2026 <a href="https://mar.sg" target="_blank" rel="noopener noreferrer">Mar.sg</a> &nbsp;·&nbsp; <span class="footer-version">v0.9.5 Beta</span></span>
                 <div class="footer-social">
                     <a href="#" class="footer-social-link" aria-label="X (Twitter)" title="X (Twitter)">𝕏</a>
                     <a href="#" class="footer-social-link" aria-label="Instagram" title="Instagram">
@@ -761,7 +774,16 @@
                 <select id="editPlayerSelect" class="input-field" style="padding: 12px;"></select>
 
                 <label style="display: block; margin: 16px 0 6px; color: var(--text-secondary);">Players who played</label>
-                <div id="editEntryParticipants" class="selection-grid selection-grid-meeple edit-entry-meeple-grid" style="min-height: 48px;"></div>
+                <div class="edit-entry-inline-add" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center;">
+                    <input type="text" id="editEntryNewPlayerName" class="input-field" placeholder="New name…" style="flex: 1; min-width: 120px; padding: 10px;">
+                    <button type="button" class="modal-btn cancel" id="editEntryAddMeepleBtn" style="margin: 0;">Add meeple</button>
+                    <button type="button" class="modal-btn cancel" id="editEntryAddGuestBtn" style="margin: 0;">Add guest</button>
+                </div>
+                <div id="editEntryParticipants" class="edit-entry-participants-stack">
+                    <div id="editEntryParticipantsCore" class="selection-grid selection-grid-meeple edit-entry-meeple-grid" style="min-height: 48px;"></div>
+                    <div id="editEntryParticipantsGuestLabel" class="meeple-section-label" style="display: none;">Guest meeples</div>
+                    <div id="editEntryParticipantsGuests" class="selection-grid selection-grid-meeple edit-entry-meeple-grid" style="display: none; min-height: 48px;"></div>
+                </div>
                 
                 <label style="display: block; margin: 16px 0 6px; color: var(--text-secondary);">Date</label>
                 <input type="date" id="editDateInput" class="input-field date-input">
@@ -878,6 +900,22 @@
                     <div id="playerImageLightboxCaption" class="modal-player-lightbox-title">Meeple</div>
                     <button type="button" class="about-cta-btn about-cta-btn--ghost modal-player-lightbox-customize" id="playerImageLightboxCustomize" style="display:none;">
                         Customize meeple
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Score Snapshot Modal -->
+    <div class="modal-overlay" id="scoreSnapshotModal" aria-hidden="true">
+        <div class="modal modal-player-lightbox" role="dialog" aria-modal="true" aria-labelledby="scoreSnapshotCaption">
+            <button type="button" class="modal-lightbox-close" id="scoreSnapshotClose" aria-label="Close">✕</button>
+            <div class="modal-player-lightbox-inner">
+                <img id="scoreSnapshotImg" class="modal-player-lightbox-img" alt="">
+                <div class="modal-player-lightbox-caption">
+                    <div id="scoreSnapshotCaption" class="modal-player-lightbox-title">Score snapshot</div>
+                    <button type="button" class="about-cta-btn about-cta-btn--ghost modal-player-lightbox-customize" id="scoreSnapshotDownloadBtn">
+                        Download
                     </button>
                 </div>
             </div>
@@ -1009,16 +1047,29 @@
                 <div id="tallyWinnerBar" class="tally-winner-bar"></div>
                 <div class="tally-actions">
                     <button class="btn btn-secondary" id="tallyBackBtn" type="button">← Back</button>
+                    <button class="btn btn-secondary tally-snapshot-btn" id="tallySnapshotBtn" type="button">📸 Snapshot</button>
                     <button class="btn tally-record-btn" id="tallyRecordBtn" type="button">Review win and set date</button>
                 </div>
             </div>
 
             <!-- Stage 3: Celebrate & confirm date -->
             <div id="tallyStage3" class="tally-stage">
-                <div class="tally-celebrate">
-                    <div class="tally-celebrate-crown">👑</div>
-                    <div class="tally-celebrate-name" id="tallyCelebName"></div>
-                    <div class="tally-celebrate-sub" id="tallyCelebSub"></div>
+                <div class="tally-stage3-top">
+                    <div class="tally-celebrate tally-celebrate-left">
+                        <div class="tally-celebrate-crown">👑</div>
+                        <div class="tally-celebrate-name" id="tallyCelebName"></div>
+                        <div class="tally-celebrate-sub" id="tallyCelebSub"></div>
+                    </div>
+                    <div class="tally-snapshot-panel">
+                        <button type="button" class="tally-snapshot-preview-btn" id="tallySnapshotPreviewBtn" title="Open snapshot in new window">
+                            <img id="tallySnapshotPreviewImg" class="tally-snapshot-preview-img" alt="Score snapshot preview">
+                            <span id="tallySnapshotPreviewEmpty" class="tally-snapshot-preview-empty">Generating snapshot…</span>
+                        </button>
+                        <div class="tally-snapshot-actions">
+                            <button type="button" class="btn btn-secondary" id="tallySnapshotDownloadBtn">Download</button>
+                            <button type="button" class="btn btn-secondary" id="tallySnapshotViewBtn">View</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="tally-field">
                     <label class="tally-label">When was this played?</label>

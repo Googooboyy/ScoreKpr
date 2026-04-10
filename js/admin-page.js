@@ -14,14 +14,16 @@ import {
     fetchAllAnnouncements, publishAnnouncement, clearAnnouncement, fetchActiveAnnouncement,
     deleteAnnouncement, reactivateAnnouncement, updateAnnouncement,
     fetchLastPersonalMessagePerUser,
-    sendPersonalMessages,
+    sendPersonalMessages, clearPersonalMessages,
     fetchUnlinkedGames, fetchGlobalGames, upsertGlobalGame, linkGameToGlobal, createGlobalGameByName,
     deletePlaygroupAdmin, deleteInviteToken, replaceInviteToken,
     adminDeleteEntry, adminDeleteGame, adminDeletePlayer, adminMergeGames, adminUpdateGame,
     adminRemoveUserFromCampaigns, adminDeleteUserAccount,
-    updateLastSeen, fetchUserLastSeenMap
+    updateLastSeen, fetchUserLastSeenMap,
+    adminUnlinkGameFromGlobal
 } from './supabase.js';
 import { signOut } from './auth.js';
+import { copyTextWithFallback } from './clipboard.js';
 
 // ── Toast (replaces alert for consistent in-app feedback) ──────────────────────
 function adminToast(msg) {
@@ -332,26 +334,76 @@ function renderCampaigns() {
 
 // ── Users ────────────────────────────────────────────────────────────────────
 
+function adminTierMapKey(userId) {
+    return String(userId || '').toLowerCase();
+}
+
+/** Non-PII snapshot after user_tiers load: sessionStorage + console (DevTools → Console). */
+function adminDbgUsersTierMap(branch, map) {
+    const vals = Object.values(map);
+    const payload = {
+        phase: 'tiers_loaded',
+        branch,
+        mapKeys: Object.keys(map).length,
+        valueTypes: [...new Set(vals.map(v => typeof v))].join(',')
+    };
+    const json = JSON.stringify({ t: Date.now(), ...payload });
+    try {
+        sessionStorage.setItem('__sk_dbg819', json);
+        sessionStorage.setItem('scorekeeper_dbg_user_tiers', json);
+    } catch (_) {}
+    console.info('[ScoreKpr admin] Users tier map', payload);
+}
+
 async function loadUsers() {
     if (!guardAdmin()) return;
-    const fetchPromises = [fetchLastPersonalMessagePerUser()];
-    if (!_users.length) {
-        fetchPromises.unshift(
-            fetchAllUsers(), fetchAllPlaygroupMembers(), fetchUserLastSeenMap(), fetchUserTiersMap()
-        );
+    try {
+        sessionStorage.setItem('scorekeeper_dbg_users_load', JSON.stringify({ phase: 'started', t: Date.now() }));
+    } catch (_) {}
+    // #region agent log
+    const _dbgUsersLen = _users.length;
+    const _dbgMapKeys = Object.keys(_userTiersMap).length;
+    fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'post-fix', hypothesisId: 'H1', location: 'admin-page.js:loadUsers:entry', message: 'loadUsers entry', data: { usersCached: _dbgUsersLen, userTiersMapKeysBefore: _dbgMapKeys }, timestamp: Date.now() }) }).catch(() => {});
+    // #endregion
+    try {
+        if (!_users.length) {
+            const [users, members, lastSeen, tiersMap, lastMsg] = await Promise.all([
+                fetchAllUsers(), fetchAllPlaygroupMembers(), fetchUserLastSeenMap(), fetchUserTiersMap(),
+                fetchLastPersonalMessagePerUser()
+            ]);
+            _users = users;
+            _members = members;
+            _userLastSeen = lastSeen;
+            _userTiersMap = tiersMap || {};
+            _userLastMessage = lastMsg || {};
+            // #region agent log
+            adminDbgUsersTierMap('full', _userTiersMap);
+            fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H1-H2', location: 'admin-page.js:loadUsers:fullBranch', message: 'after full user load', data: { tiersMapKeyCount: Object.keys(_userTiersMap).length }, timestamp: Date.now() }) }).catch(() => {});
+            // #endregion
+        } else {
+            const [tiersMap, lastMsg] = await Promise.all([
+                fetchUserTiersMap(),
+                fetchLastPersonalMessagePerUser()
+            ]);
+            _userTiersMap = tiersMap || {};
+            _userLastMessage = lastMsg || {};
+            // #region agent log
+            adminDbgUsersTierMap('cached', _userTiersMap);
+            fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H1', location: 'admin-page.js:loadUsers:cachedUsersBranch', message: 'refetched user_tiers while reusing cached user list', data: { tiersMapKeyCount: Object.keys(_userTiersMap).length }, timestamp: Date.now() }) }).catch(() => {});
+            // #endregion
+        }
+        renderUsers();
+    } catch (e) {
+        try {
+            sessionStorage.setItem('scorekeeper_dbg_users_load', JSON.stringify({
+                phase: 'error',
+                t: Date.now(),
+                message: String(e && e.message ? e.message : e)
+            }));
+        } catch (_) {}
+        console.error('[ScoreKpr admin] loadUsers failed', e);
+        adminToast('Failed to load users: ' + (e.message || e));
     }
-    const results = await Promise.all(fetchPromises);
-    if (!_users.length) {
-        const [users, members, lastSeen, tiersMap, lastMsg] = results;
-        _users = users;
-        _members = members;
-        _userLastSeen = lastSeen;
-        _userTiersMap = tiersMap || {};
-        _userLastMessage = lastMsg || {};
-    } else {
-        _userLastMessage = results[0] || {};
-    }
-    renderUsers();
 }
 
 let _tierDefinitions = {};
@@ -550,11 +602,19 @@ function renderUsers() {
         const icon = th.querySelector('.sort-icon');
         if (icon) icon.textContent = th.dataset.sort === _usersSortBy ? (_usersSortDir === 'asc' ? '↑' : '↓') : '';
     });
+    // #region agent log
+    if (filtered.length) {
+        const _u = filtered[0];
+        const _k = adminTierMapKey(_u.id);
+        const _t = _userTiersMap[_k];
+        fetch('http://127.0.0.1:7387/ingest/7623d2c8-0eca-42ce-8ead-7bae182e7c32', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '819563' }, body: JSON.stringify({ sessionId: '819563', runId: 'iter2', hypothesisId: 'H3-H4', location: 'admin-page.js:renderUsers', message: 'first row tier resolution', data: { hasMapKey: Object.prototype.hasOwnProperty.call(_userTiersMap, _k), resolvedTier: _t, tierJsType: typeof _t, strictEq2: _t === 2 }, timestamp: Date.now() }) }).catch(() => {});
+    }
+    // #endregion
     tbody.innerHTML = filtered.map(u => {
         const owned = _members.filter(m => m.user_id === u.id && m.role === 'owner').length;
         const memberOf = _members.filter(m => m.user_id === u.id).length;
         const lastSeen = _userLastSeen[u.id];
-        const tier = _userTiersMap[u.id] ?? 1;
+        const tier = _userTiersMap[adminTierMapKey(u.id)] ?? 1;
         const tierOpts = `<option value="1" ${tier === 1 ? 'selected' : ''}>Commoner</option><option value="2" ${tier === 2 ? 'selected' : ''}>Noble</option><option value="3" ${tier === 3 ? 'selected' : ''}>Royal</option>`;
         return `<tr data-id="${u.id}">
             <td><input type="checkbox" class="admin-row-check" data-table="users" value="${u.id}"></td>
@@ -575,17 +635,18 @@ function renderUsers() {
             const newTier = parseInt(sel.value, 10) || 1;
             try {
                 await updateUserTier(uid, newTier);
-                _userTiersMap[uid] = newTier;
+                _userTiersMap[adminTierMapKey(uid)] = newTier;
                 adminToast('Tier updated to ' + getTierLabel(newTier));
             } catch (e) {
                 adminToast('Error updating tier: ' + (e.message || e));
-                sel.value = _userTiersMap[uid] ?? 1;
+                sel.value = String(_userTiersMap[adminTierMapKey(uid)] ?? 1);
             }
         });
     });
 
     setupBulkSelect('users', 'usersBulkBar', 'usersBulkCount', 'usersTable');
     const sendMsgBtn = document.getElementById('usersBulkSendMessage');
+    const clearMsgBtn = document.getElementById('usersBulkClearMessages');
     const removeBtn = document.getElementById('usersBulkRemoveCampaigns');
     const deleteBtn = document.getElementById('usersBulkDeleteAccounts');
     const clearBtn = document.getElementById('usersBulkClear');
@@ -595,6 +656,21 @@ function renderUsers() {
             const ids = getChecked('users');
             if (!ids.length) { adminToast('Select users first.'); return; }
             openSendMessageModal(ids);
+        };
+    }
+
+    if (clearMsgBtn) {
+        clearMsgBtn.onclick = async () => {
+            const ids = getChecked('users');
+            if (!ids.length) { adminToast('Select users first.'); return; }
+            if (!confirm(`Clear the personal message banner for ${ids.length} user(s)? They will no longer see any active personal message.`)) return;
+            try {
+                await clearPersonalMessages(ids);
+                clearChecked('users', 'usersBulkBar', 'usersBulkCount', 'usersTable');
+                adminToast('Personal message banners cleared.');
+            } catch (e) {
+                adminToast('Error clearing messages: ' + (e.message || e));
+            }
         };
     }
 
@@ -806,6 +882,7 @@ function renderGamesTable() {
         <td>
             <button class="admin-action-btn" data-edit-game="${g.id}" title="Edit name">Edit</button>
             ${canMerge ? `<button class="admin-action-btn admin-action-success" data-merge-game="${g.id}" title="Merge into another game">Merge</button>` : ''}
+            ${g.global_game_id ? `<button class="admin-action-btn" data-unlink-game="${g.id}" title="Unlink from Global game">Unlink</button>` : ''}
             <button class="admin-action-btn admin-action-danger" data-delete-game="${g.id}" title="Delete game">✕</button>
         </td>
     </tr>`;
@@ -816,6 +893,24 @@ function renderGamesTable() {
     });
     tbody.querySelectorAll('[data-merge-game]').forEach(btn => {
         btn.addEventListener('click', () => showMergeModal(btn.dataset.mergeGame));
+    });
+    tbody.querySelectorAll('[data-unlink-game]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const gameId = btn.dataset.unlinkGame;
+            if (!gameId) return;
+            if (!confirm('Unlink this game from its Global game? This will not delete any data.')) return;
+            btn.disabled = true;
+            try {
+                await adminUnlinkGameFromGlobal(gameId);
+                _games = _games.map(g => g.id === gameId ? { ...g, global_game_id: null } : g);
+                renderGamesTable();
+                renderConsolidatedGames();
+                adminToast('Game unlinked.');
+            } catch (e) {
+                adminToast('Error unlinking game: ' + (e.message || e));
+                btn.disabled = false;
+            }
+        });
     });
     tbody.querySelectorAll('[data-delete-game]').forEach(btn => {
         btn.addEventListener('click', async () => {
@@ -1044,11 +1139,15 @@ async function searchBGGForMerge(query, resultsDiv, onClear, onPick) {
             resultsDiv.innerHTML = '<span style="color:var(--text-muted); font-size:0.85rem;">No results.</span>';
             return;
         }
-        resultsDiv.innerHTML = results.slice(0, 5).map(r =>
-            `<button type="button" class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
-                ${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}
-            </button>`
-        ).join('');
+        resultsDiv.innerHTML = results.map(r => {
+            const label = `${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}`;
+            const thumb = r.thumbnail_url
+              ? `<img src="${esc(r.thumbnail_url)}" class="admin-bgg-thumb" alt="">`
+              : '';
+            return `<button type="button" class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
+              ${thumb}<span class="admin-bgg-label">${label}</span>
+            </button>`;
+          }).join('');
         resultsDiv.querySelectorAll('.admin-bgg-result').forEach(btn => {
             btn.addEventListener('click', () => {
                 const bgg = JSON.parse(btn.dataset.bgg);
@@ -1497,11 +1596,15 @@ async function searchBGG(query, gameId) {
             return;
         }
 
-        resultsDiv.innerHTML = results.slice(0, 5).map(r =>
-            `<button class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
-                ${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}
-            </button>`
-        ).join('');
+        resultsDiv.innerHTML = results.map(r => {
+            const label = `${esc(r.name)}${r.year_published ? ' (' + r.year_published + ')' : ''}`;
+            const thumb = r.thumbnail_url
+                ? `<img src="${esc(r.thumbnail_url)}" class="admin-bgg-thumb" alt="">`
+                : '';
+            return `<button class="admin-bgg-result" data-bgg='${JSON.stringify(r).replace(/'/g, '&#39;')}'>
+                ${thumb}<span class="admin-bgg-label">${label}</span>
+            </button>`;
+        }).join('');
 
         resultsDiv.querySelectorAll('.admin-bgg-result').forEach(btn => {
             btn.addEventListener('click', () => linkBGGResult(gameId, JSON.parse(btn.dataset.bgg)));
@@ -1586,10 +1689,19 @@ function renderInvites() {
     }).join('') || '<tr><td colspan="6" style="text-align:center; color:var(--text-muted);">No invite tokens.</td></tr>';
 
     tbody.querySelectorAll('[data-copy-invite]').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const token = btn.dataset.copyInvite;
             const url = baseUrl + (baseUrl.endsWith('/') ? '' : '') + (baseUrl.includes('?') ? '&' : '?') + 'invite=' + encodeURIComponent(token);
-            navigator.clipboard.writeText(url).then(() => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy link'; }, 1500); }).catch(() => prompt('Copy invite link:', url));
+            const result = await copyTextWithFallback(url, { promptLabel: 'Copy invite link:' });
+            if (result.method === 'clipboard') {
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+            } else if (result.method === 'prompt') {
+                btn.textContent = 'Manual copy';
+                setTimeout(() => { btn.textContent = 'Copy link'; }, 1500);
+            } else {
+                adminToast('Clipboard is unavailable in this browser.');
+            }
         });
     });
     tbody.querySelectorAll('[data-replace-invite]').forEach(btn => {
@@ -1989,10 +2101,16 @@ function showMessageSentModal(userIds, message) {
     const close = () => modal.classList.remove('active');
 
     copyBtn.onclick = () => {
-        navigator.clipboard.writeText(summary).then(() => {
-            copyBtn.textContent = 'Copied!';
-            setTimeout(() => { copyBtn.textContent = 'Copy summary'; }, 1500);
-        }).catch(() => adminToast('Could not copy.'));
+        copyTextWithFallback(summary, { promptLabel: 'Copy summary:' }).then((result) => {
+            if (result.method === 'clipboard') {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => { copyBtn.textContent = 'Copy summary'; }, 1500);
+            } else if (result.method === 'prompt') {
+                adminToast('Clipboard blocked. Copy from the prompt.');
+            } else {
+                adminToast('Could not copy.');
+            }
+        });
     };
     closeBtn.onclick = close;
     modal.addEventListener('click', e => { if (e.target === modal) close(); });

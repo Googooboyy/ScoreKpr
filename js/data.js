@@ -1,4 +1,10 @@
 // Data Management
+/** True if this meeple is a guest (separate roster row in UI). */
+export function playerIsGuest(name) {
+    const pd = data.playerData && data.playerData[name];
+    return !!(pd && pd.isGuest);
+}
+
 export let data = {
     players: [],
     games: [],

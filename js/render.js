@@ -10,10 +10,11 @@ import {
     toggleShowAllGamesInAdd,
     escapeHtml,
     formatDate,
-    saveData
+    saveData,
+    playerIsGuest
 } from './data.js';
 import { deletePlayer, deleteGame, deleteEntryById } from './actions.js';
-import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox } from './modals.js';
+import { openPlayerImageModal, openGameImageModal, openEditEntryModal, openPlayerProfileModal, openImageLightbox, openScoreSnapshotModal, showNotification } from './modals.js';
 import { getActivePlaygroup } from './playgroups.js';
 import { fetchGamesFromOtherCampaigns, insertGame, upsertGameMetadata } from './supabase.js';
 
@@ -107,6 +108,91 @@ export function toggleVictoryRoster(player) {
     }
 }
 
+function participatedInEntry(e, p) {
+    return (e.participants && e.participants.includes(p)) || (!e.participants && e.player === p);
+}
+
+function buildPlayerLeaderboardStat(player) {
+    const playerEntries = data.entries.filter(e => e.player === player);
+    const wins = playerEntries.length;
+    const participatedEntries = data.entries.filter(e => participatedInEntry(e, player));
+    const gamesPlayed = participatedEntries.length;
+    const winPct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
+    const gameBreakdown = calculateGameBreakdown(player);
+    const lastPlayedDate = participatedEntries.reduce((latest, entry) => {
+        if (!entry.date) return latest;
+        if (!latest) return entry.date;
+        return new Date(entry.date) > new Date(latest) ? entry.date : latest;
+    }, null);
+    const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
+    return {
+        player,
+        wins,
+        gamesPlayed,
+        winPct,
+        gameBreakdown,
+        lastPlayedDate,
+        image: playerData.image,
+        color: playerData.color,
+        userId: playerData.userId || null
+    };
+}
+
+function sortPlayerStatsByWins(a, b) {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    return (b.winPct || 0) - (a.winPct || 0);
+}
+
+function renderSingleLeaderboardCard(stat, showCrown, isGuestCard) {
+    const currentUserId = data.currentUserId;
+    const playerDataObj = data.playerData && data.playerData[stat.player] ? data.playerData[stat.player] : {};
+    const isMyAccount = !!(currentUserId && playerDataObj.userId && playerDataObj.userId === currentUserId);
+    const linkedClass = isMyAccount ? ' is-my-account' : '';
+    const hasPlayerColorClass = stat.color ? ' has-player-color' : '';
+    const guestClass = isGuestCard ? ' player-card-is-guest' : '';
+    const playerCardStyle = stat.color ? '--player-card-color: ' + stat.color + ';' : '';
+    const crownHtml = showCrown ? '<div class="player-crown">👑</div>' : '';
+    const youBadge = isMyAccount ? '<span class="player-you-badge" title="Your linked account">You</span>' : '';
+    const isTraveller = !stat.userId;
+    const travellerBadge = isTraveller
+        ? '<span class="meeple-traveller-badge" title="Unlinked meeple">Traveller</span>'
+        : '';
+    const tierLabel = stat.userId && playerDataObj.tier
+        ? (playerDataObj.tier === 2 ? 'Noble' : playerDataObj.tier === 3 ? 'Royal' : 'Commoner')
+        : '';
+    const tierPill = tierLabel
+        ? '<span class="player-tier-pill player-tier-' + tierLabel.toLowerCase() + '" title="Membership tier">' + escapeHtml(tierLabel) + '</span>'
+        : '';
+    const guestBadge = isGuestCard ? '<span class="meeple-guest-badge">Guest</span>' : '';
+    const imageHtml = stat.image
+        ? '<div class="player-card-image-container">' + crownHtml + '<img src="' + escapeHtml(stat.image) + '" alt="' + escapeHtml(stat.player) + '" class="player-card-image" onerror="this.style.display=\'none\'; this.parentElement.querySelector(\'.player-card-image-placeholder\').style.display=\'flex\';"><div class="player-card-image-placeholder" style="display: none;">👤</div></div>'
+        : '<div class="player-card-image-container">' + crownHtml + '<div class="player-card-image-placeholder">👤</div></div>';
+    const displayQuote = (currentUserId && stat.userId === currentUserId && data.currentUserFavouriteQuote)
+        ? data.currentUserFavouriteQuote
+        : pickRandomQuote();
+
+    return '<div class="player-card' + hasPlayerColorClass + linkedClass + guestClass + '" data-player="' + escapeHtml(stat.player) + '" style="' + playerCardStyle + '">' +
+        '<div class="player-header">' +
+        '<div class="player-info-section player-profile-trigger" data-player="' + escapeHtml(stat.player) + '" title="View profile" style="cursor:pointer;">' + imageHtml +
+        '<div class="player-name-section">' +
+        '<div class="player-name">' + escapeHtml(stat.player) + youBadge + travellerBadge + tierPill + guestBadge + '</div>' +
+        '<div class="player-card-quote">' + escapeHtml(displayQuote) + '</div>' +
+        '</div>' +
+        '</div>' +
+        '</div>' +
+        '<div class="victory-roster-header" onclick="window.toggleVictoryRoster(\'' + escapeHtml(stat.player).replace(/'/g, "\\'") + '\')">' +
+        '<div class="victory-roster-wins">' + stat.wins + ' Games Won' + (stat.gamesPlayed > 0 ? ' · ' + (stat.winPct || 0).toFixed(0) + '% win rate' : '') + '</div>' +
+        '<div class="victory-roster-toggle-group">' +
+        '<span class="victory-roster-label">more</span>' +
+        '<span class="victory-roster-toggle" id="toggle-' + escapeHtml(stat.player) + '">▼</span>' +
+        '</div>' +
+        '</div>' +
+        '<div class="player-game-stats" id="roster-' + escapeHtml(stat.player) + '">' +
+        '<div class="player-games-list">' + renderGameBreakdown(stat.gameBreakdown) + '</div>' +
+        '</div>' +
+        '</div>';
+}
+
 export function renderPlayers() {
     const container = document.getElementById('playersContainer');
     if (!container) return;
@@ -133,89 +219,28 @@ export function renderPlayers() {
         return;
     }
 
-    const participated = (e, p) =>
-        (e.participants && e.participants.includes(p)) || (!e.participants && e.player === p);
+    const allSorted = data.players.map(buildPlayerLeaderboardStat).sort(sortPlayerStatsByWins);
+    const crownPlayerName = allSorted[0] ? allSorted[0].player : null;
 
-    let playerStats = data.players.map(player => {
-        const playerEntries = data.entries.filter(e => e.player === player);
-        const wins = playerEntries.length;
-        const participatedEntries = data.entries.filter(e => participated(e, player));
-        const gamesPlayed = participatedEntries.length;
-        const winPct = gamesPlayed > 0 ? (wins / gamesPlayed) * 100 : 0;
-        const gameBreakdown = calculateGameBreakdown(player);
-        const lastPlayedDate = participatedEntries.reduce((latest, entry) => {
-            if (!entry.date) return latest;
-            if (!latest) return entry.date;
-            return new Date(entry.date) > new Date(latest) ? entry.date : latest;
-        }, null);
-        const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
-        return {
-            player: player,
-            wins: wins,
-            gamesPlayed,
-            winPct,
-            gameBreakdown: gameBreakdown,
-            lastPlayedDate: lastPlayedDate,
-            image: playerData.image,
-            color: playerData.color,
-            userId: playerData.userId || null
-        };
-    }).sort((a, b) => {
-        if (b.wins !== a.wins) return b.wins - a.wins;
-        return (b.winPct || 0) - (a.winPct || 0);
-    });
+    const coreNames = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestNames = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const coreStats = coreNames.map(buildPlayerLeaderboardStat).sort(sortPlayerStatsByWins);
+    const guestStats = guestNames.map(buildPlayerLeaderboardStat).sort(sortPlayerStatsByWins);
 
     if (toggleBtn) toggleBtn.style.display = 'none';
 
-    const currentUserId = data.currentUserId;
-    const pg = getActivePlaygroup();
-    container.innerHTML = playerStats.map((stat, index) => {
-        const playerDataObj = data.playerData && data.playerData[stat.player] ? data.playerData[stat.player] : {};
-        const isMyAccount = !!(currentUserId && playerDataObj.userId && playerDataObj.userId === currentUserId);
-        const linkedClass = isMyAccount ? ' is-my-account' : '';
-        const hasPlayerColorClass = stat.color ? ' has-player-color' : '';
-        const playerCardStyle = stat.color ? '--player-card-color: ' + stat.color + ';' : '';
-        const isFirst = index === 0;
-        const crownHtml = isFirst ? '<div class="player-crown">👑</div>' : '';
-        const youBadge = isMyAccount ? '<span class="player-you-badge" title="Your linked account">You</span>' : '';
-        const isTraveller = !stat.userId;
-        const travellerBadge = isTraveller
-            ? '<span class="meeple-traveller-badge" title="Unlinked meeple">Traveller</span>'
-            : '';
-        const tierLabel = stat.userId && playerDataObj.tier
-            ? (playerDataObj.tier === 2 ? 'Noble' : playerDataObj.tier === 3 ? 'Royal' : 'Commoner')
-            : '';
-        const tierPill = tierLabel
-            ? '<span class="player-tier-pill player-tier-' + tierLabel.toLowerCase() + '" title="Membership tier">' + escapeHtml(tierLabel) + '</span>'
-            : '';
-        const imageHtml = stat.image ?
-            '<div class="player-card-image-container">' + crownHtml + '<img src="' + escapeHtml(stat.image) + '" alt="' + escapeHtml(stat.player) + '" class="player-card-image" onerror="this.style.display=\'none\'; this.parentElement.querySelector(\'.player-card-image-placeholder\').style.display=\'flex\';"><div class="player-card-image-placeholder" style="display: none;">👤</div></div>' :
-            '<div class="player-card-image-container"><div class="player-card-image-placeholder">👤</div></div>';
-        const displayQuote = (currentUserId && stat.userId === currentUserId && data.currentUserFavouriteQuote)
-            ? data.currentUserFavouriteQuote
-            : pickRandomQuote();
+    const spanRow = '<div class="meeple-section-label" style="grid-column: 1 / -1;">';
+    const parts = [];
+    if (guestStats.length > 0 && coreStats.length > 0) {
+        parts.push(spanRow + 'Campaign meeples</div>');
+    }
+    parts.push(coreStats.map(stat => renderSingleLeaderboardCard(stat, stat.player === crownPlayerName, false)).join(''));
+    if (guestStats.length > 0) {
+        parts.push(spanRow + 'Guest meeples</div>');
+        parts.push(guestStats.map(stat => renderSingleLeaderboardCard(stat, stat.player === crownPlayerName, true)).join(''));
+    }
 
-        return '<div class="player-card' + hasPlayerColorClass + linkedClass + '" data-player="' + escapeHtml(stat.player) + '" style="' + playerCardStyle + '">' +
-            '<div class="player-header">' +
-            '<div class="player-info-section player-profile-trigger" data-player="' + escapeHtml(stat.player) + '" title="View profile" style="cursor:pointer;">' + imageHtml +
-            '<div class="player-name-section">' +
-            '<div class="player-name">' + escapeHtml(stat.player) + youBadge + travellerBadge + tierPill + '</div>' +
-            '<div class="player-card-quote">' + escapeHtml(displayQuote) + '</div>' +
-            '</div>' +
-            '</div>' +
-            '</div>' +
-            '<div class="victory-roster-header" onclick="window.toggleVictoryRoster(\'' + escapeHtml(stat.player).replace(/'/g, "\\'") + '\')">' +
-            '<div class="victory-roster-wins">' + stat.wins + ' Games Won' + (stat.gamesPlayed > 0 ? ' · ' + (stat.winPct || 0).toFixed(0) + '% win rate' : '') + '</div>' +
-            '<div class="victory-roster-toggle-group">' +
-            '<span class="victory-roster-label">more</span>' +
-            '<span class="victory-roster-toggle" id="toggle-' + escapeHtml(stat.player) + '">▼</span>' +
-            '</div>' +
-            '</div>' +
-            '<div class="player-game-stats" id="roster-' + escapeHtml(stat.player) + '">' +
-            '<div class="player-games-list">' + renderGameBreakdown(stat.gameBreakdown) + '</div>' +
-            '</div>' +
-            '</div>';
-    }).join('');
+    container.innerHTML = parts.join('');
 
     container.querySelectorAll('.player-profile-trigger').forEach(el => {
         el.addEventListener('click', function (e) {
@@ -320,7 +345,12 @@ export function renderGames() {
             '<div class="game-card-image-placeholder">🎲</div>';
         const lastPlayedText = stat.lastPlayed ? 'Last: ' + formatDate(stat.lastPlayed) : 'Never played';
         const historyHtml = stat.history.length > 0 ?
-            stat.history.map(h => '<div class="game-history-item"><span class="game-history-winner">🏆 ' + escapeHtml(h.player) + '</span><span class="game-history-date">' + formatDate(h.date) + '</span></div>').join('') :
+            stat.history.map(h =>
+                '<div class="game-history-item">' +
+                '<div class="game-history-head"><span class="game-history-winner">🏆 ' + escapeHtml(h.player) + '</span><span class="game-history-date">' + formatDate(h.date) + '</span></div>' +
+                _renderSnapshotPanel(h, 'game-history-snapshot') +
+                '</div>'
+            ).join('') :
             '<div style="text-align: center; color: var(--text-muted); padding: 20px;">No games played yet</div>';
 
         return '<div class="game-card-wrapper" data-game="' + escapeHtml(stat.game) + '">' +
@@ -365,6 +395,7 @@ export function renderGames() {
             toggleGameHistory(this.getAttribute('data-game'), this);
         });
     });
+    _bindSnapshotActions(container);
 }
 
 export function toggleGameHistory(game, btn) {
@@ -569,44 +600,64 @@ async function loadOtherCampaignGamesForAddWin() {
     }
 }
 
+function appendMeepleSelectionTile(parentEl, player) {
+    const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
+    const image = playerData.image || null;
+    const inParticipants = (currentEntry.participants || []).includes(player);
+    const isWinner = currentEntry.player === player;
+    const selectedClass = inParticipants ? 'selected' : '';
+    const winnerBadge = isWinner ? ' <span class="selection-winner-badge" title="Winner">👑</span>' : '';
+    const guestBadge = playerIsGuest(player) ? ' <span class="meeple-guest-badge">Guest</span>' : '';
+    const div = document.createElement('div');
+    div.className = 'selection-item selection-item-meeple ' + selectedClass + (isWinner ? ' is-winner' : '');
+    div.setAttribute('data-player', player);
+    div.innerHTML =
+        '<div class="selection-item-meeple-img-wrap">' +
+        (image
+            ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(player) + '" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
+            : '<div class="selection-item-meeple-placeholder">👤</div>') +
+        '</div>' +
+        '<span class="selection-item-meeple-name">' + escapeHtml(player) + winnerBadge + guestBadge + '</span>';
+    div.addEventListener('click', function () {
+        togglePlayerInStep2(this.getAttribute('data-player'));
+    });
+    parentEl.appendChild(div);
+}
+
 export function renderPlayerSelection() {
     const container = document.getElementById('playerSelection');
+    const guestGrid = document.getElementById('playerSelectionGuests');
+    const guestLabel = document.getElementById('playerSelectionGuestLabel');
     const addBtn = container.querySelector('.add-new-btn');
     container.innerHTML = '';
     if (addBtn) container.appendChild(addBtn);
+    if (guestGrid) guestGrid.innerHTML = '';
 
     if (data.players.length === 0) {
         const p = document.createElement('p');
         p.style.cssText = 'color: var(--text-muted); text-align: center; grid-column: 1/-1;';
         p.textContent = 'No players yet. Add your first player above.';
         container.appendChild(p);
+        if (guestLabel) guestLabel.style.display = 'none';
+        if (guestGrid) guestGrid.style.display = 'none';
         return;
     }
 
-    const sortedPlayers = [...data.players].sort((a, b) => a.localeCompare(b));
+    const corePlayers = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestPlayers = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
 
-    sortedPlayers.forEach(player => {
-        const playerData = data.playerData && data.playerData[player] ? data.playerData[player] : {};
-        const image = playerData.image || null;
-        const inParticipants = (currentEntry.participants || []).includes(player);
-        const isWinner = currentEntry.player === player;
-        const selectedClass = inParticipants ? 'selected' : '';
-        const winnerBadge = isWinner ? ' <span class="selection-winner-badge" title="Winner">👑</span>' : '';
-        const div = document.createElement('div');
-        div.className = 'selection-item selection-item-meeple ' + selectedClass + (isWinner ? ' is-winner' : '');
-        div.setAttribute('data-player', player);
-        div.innerHTML =
-            '<div class="selection-item-meeple-img-wrap">' +
-            (image
-                ? '<img src="' + escapeHtml(image) + '" alt="' + escapeHtml(player) + '" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
-                : '<div class="selection-item-meeple-placeholder">👤</div>') +
-            '</div>' +
-            '<span class="selection-item-meeple-name">' + escapeHtml(player) + winnerBadge + '</span>';
-        div.addEventListener('click', function () {
-            togglePlayerInStep2(this.getAttribute('data-player'));
-        });
-        container.appendChild(div);
-    });
+    corePlayers.forEach(player => appendMeepleSelectionTile(container, player));
+
+    if (guestLabel && guestGrid) {
+        if (guestPlayers.length > 0) {
+            guestLabel.style.display = 'block';
+            guestGrid.style.display = 'grid';
+            guestPlayers.forEach(player => appendMeepleSelectionTile(guestGrid, player));
+        } else {
+            guestLabel.style.display = 'none';
+            guestGrid.style.display = 'none';
+        }
+    }
 
     const continueBtn = document.getElementById('step2ContinueBtn');
     if (continueBtn) continueBtn.disabled = !currentEntry.player;
@@ -651,6 +702,58 @@ function relativeTime(isoString) {
     const days = Math.floor(hrs / 24);
     if (days < 7) return days + ' day' + (days !== 1 ? 's' : '') + ' ago';
     return formatDate(isoString);
+}
+
+function _snapshotFilePart(value, fallback = 'value') {
+    const safe = String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return (safe || fallback).slice(0, 18);
+}
+
+function _buildSnapshotFilenameForEntry(entry) {
+    const game = _snapshotFilePart(entry.game, 'game');
+    const winner = _snapshotFilePart(entry.player, 'winner');
+    const date = (entry.date && /^\d{4}-\d{2}-\d{2}$/.test(entry.date))
+        ? entry.date
+        : new Date().toISOString().slice(0, 10);
+    return `score-snapshot-${game}-${date}-${winner}.png`;
+}
+
+function _renderSnapshotPanel(entry, extraClass = '') {
+    const url = entry.score_snapshot_url || null;
+    const panelClass = ('history-snapshot ' + extraClass).trim();
+    if (!url) {
+        return '<div class="' + panelClass + '">' +
+            '<div class="history-snapshot-status">not available</div>' +
+            '</div>';
+    }
+    return '<div class="' + panelClass + '">' +
+        '<div class="history-snapshot-actions">' +
+        '<button class="history-snapshot-btn history-snapshot-view-btn" data-url="' + escapeHtml(url) + '" data-game="' + escapeHtml(entry.game) + '" data-player="' + escapeHtml(entry.player) + '" data-date="' + escapeHtml(entry.date) + '">View full score</button>' +
+        '</div>' +
+        '</div>';
+}
+
+function _bindSnapshotActions(container) {
+    if (!container) return;
+    container.querySelectorAll('.history-snapshot-view-btn').forEach(btn => {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const url = this.getAttribute('data-url');
+            if (!url) return;
+            const entry = {
+                game: this.getAttribute('data-game') || 'game',
+                player: this.getAttribute('data-player') || 'winner',
+                date: this.getAttribute('data-date') || ''
+            };
+            const filename = _buildSnapshotFilenameForEntry(entry);
+            const title = `${entry.game} - ${formatDate(entry.date)}`;
+            openScoreSnapshotModal(url, title, filename);
+        });
+    });
 }
 
 export function renderHistory() {
@@ -705,6 +808,7 @@ export function renderHistory() {
             '<div class="history-card-info">' +
             '<div class="history-card-game">' + gameThumbHtml + ' ' + escapeHtml(entry.game) + '</div>' +
             '<div class="history-card-details">🏆 ' + escapeHtml(entry.player) + ' • 📅 ' + formatDate(entry.date) + '</div>' +
+            _renderSnapshotPanel(entry) +
             auditHtml +
             '</div>' +
             '<div class="history-card-actions">' +
@@ -726,6 +830,7 @@ export function renderHistory() {
             deleteEntryById(this.getAttribute('data-id'));
         });
     });
+    _bindSnapshotActions(container);
 }
 
 export function toggleHistoryDisplay() {
@@ -779,4 +884,348 @@ export function resetEntryFlow() {
     uiState.tempPlayerImage = null;
     renderGameSelection();
     renderPlayerSelection();
+}
+
+// ─── Leaderboard snapshot (canvas, same approach as tally score snapshot) ───
+
+const _lbSnapTheme = {
+    bg: '#0a0a0f',
+    panel: '#151520',
+    panelAlt: '#12121a',
+    border: '#2a2a3d',
+    text: '#f3f4f6',
+    textMuted: '#9ca3af',
+    gold: '#f0c34e',
+    barDefault0: '#6366f1',
+    barDefault1: '#8b5cf6'
+};
+
+function _parsePlayersGridLayout(container) {
+    const items = [];
+    for (const child of container.children) {
+        if (child.classList.contains('meeple-section-label')) {
+            items.push({ kind: 'label', text: child.textContent.trim() });
+        } else if (child.classList.contains('player-card')) {
+            items.push({ kind: 'card', el: child });
+        }
+    }
+    return items;
+}
+
+function _leaderboardCardPayloadFromEl(el, isChampion) {
+    const name = el.getAttribute('data-player') || 'Meeple';
+    const quoteEl = el.querySelector('.player-card-quote');
+    const winsEl = el.querySelector('.victory-roster-wins');
+    const imgEl = el.querySelector('img.player-card-image');
+    const style = el.getAttribute('style') || '';
+    let accent = null;
+    const m = style.match(/--player-card-color:\s*([^;]+)/i);
+    if (m) accent = m[1].trim();
+    let imageUrl = null;
+    if (imgEl && imgEl.src && !imgEl.src.startsWith('data:,')) {
+        imageUrl = imgEl.src;
+    }
+    return {
+        playerName: name,
+        quote: quoteEl ? quoteEl.textContent.trim() : '',
+        winsLine: winsEl ? winsEl.textContent.replace(/\s+/g, ' ').trim() : '',
+        imageUrl,
+        isChampion,
+        accent
+    };
+}
+
+function _fillTextTruncated(ctx, text, maxW, x, y) {
+    const s = String(text || '');
+    if (!s) return;
+    if (ctx.measureText(s).width <= maxW) {
+        ctx.fillText(s, x, y);
+        return;
+    }
+    let t = s;
+    while (t.length > 1 && ctx.measureText(t + '…').width > maxW) {
+        t = t.slice(0, -1);
+    }
+    ctx.fillText(t + (t.length < s.length ? '…' : ''), x, y);
+}
+
+function _loadImageForCanvas(url) {
+    return new Promise((resolve) => {
+        if (!url) {
+            resolve(null);
+            return;
+        }
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = url;
+    });
+}
+
+function _buildLeaderboardSnapshotCommands(layout) {
+    const commands = [];
+    let idx = 0;
+    let seenFirstCard = false;
+    while (idx < layout.length) {
+        const it = layout[idx];
+        if (it.kind === 'label') {
+            commands.push({ op: 'label', text: it.text });
+            idx++;
+        } else if (it.kind === 'card') {
+            if (!seenFirstCard) {
+                commands.push({ op: 'champion', el: it.el });
+                seenFirstCard = true;
+                idx++;
+            } else {
+                const batch = [];
+                while (idx < layout.length && layout[idx].kind === 'card') {
+                    batch.push(layout[idx].el);
+                    idx++;
+                }
+                commands.push({ op: 'grid', elements: batch });
+            }
+        } else {
+            idx++;
+        }
+    }
+    return commands;
+}
+
+function _measureLeaderboardSnapshot(commands, gap, headerH, championH, cardH, outerPad) {
+    const contentW = 832;
+    let h = outerPad + headerH + gap;
+    for (const c of commands) {
+        if (c.op === 'label') {
+            h += 24 + gap;
+        } else if (c.op === 'champion') {
+            h += championH + gap;
+        } else if (c.op === 'grid') {
+            const n = c.elements.length;
+            const cols = Math.min(3, Math.max(1, n));
+            const rows = Math.ceil(n / cols);
+            h += rows * cardH + Math.max(0, rows - 1) * gap + gap;
+        }
+    }
+    h += outerPad - gap;
+    return { canvasH: h, contentW };
+}
+
+function _drawLeaderboardSnapshotCanvas(commands, imageMap) {
+    const scale = Math.min(2.4, (typeof window !== 'undefined' && window.devicePixelRatio > 1) ? window.devicePixelRatio : 2);
+    const outerPad = 24;
+    const gap = 16;
+    const headerH = 52;
+    const championH = 132;
+    const cardH = 120;
+    const championW = 460;
+    const theme = _lbSnapTheme;
+
+    const { canvasH, contentW } = _measureLeaderboardSnapshot(commands, gap, headerH, championH, cardH, outerPad);
+    const canvasW = outerPad * 2 + contentW;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(canvasW * scale);
+    canvas.height = Math.round(canvasH * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    let y = outerPad;
+    ctx.fillStyle = theme.textMuted;
+    ctx.font = '600 12px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('ScoreKpr · Leaderboard', outerPad, y + 18);
+    ctx.fillStyle = theme.textMuted;
+    ctx.font = '500 11px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText(new Date().toLocaleString(), outerPad, y + 36);
+    y += headerH + gap;
+
+    const drawCard = (x, w, h, payload) => {
+        const r = 12;
+        if (payload.isChampion) {
+            ctx.save();
+            ctx.shadowColor = 'rgba(255, 215, 0, 0.28)';
+            ctx.shadowBlur = 18;
+        }
+        ctx.fillStyle = payload.isChampion ? 'rgba(255, 215, 0, 0.14)' : theme.panel;
+        ctx.strokeStyle = payload.isChampion ? 'rgba(255, 215, 0, 0.55)' : theme.border;
+        ctx.lineWidth = payload.isChampion ? 2 : 1;
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, r);
+        ctx.fill();
+        ctx.stroke();
+        if (payload.isChampion) {
+            ctx.restore();
+        }
+
+        if (payload.accent) {
+            ctx.fillStyle = payload.accent;
+        } else {
+            const g = ctx.createLinearGradient(x, y, x, y + h);
+            g.addColorStop(0, theme.barDefault0);
+            g.addColorStop(1, theme.barDefault1);
+            ctx.fillStyle = g;
+        }
+        ctx.fillRect(x, y, 4, h);
+
+        const avR = payload.isChampion ? 40 : 32;
+        const avCx = x + 16 + avR;
+        const avCy = y + 16 + avR;
+        if (payload.isChampion) {
+            ctx.font = '18px "Segoe UI Emoji", "Apple Color Emoji", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('👑', avCx, y + 14);
+        }
+
+        const img = payload.imageUrl ? imageMap.get(payload.imageUrl) : null;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avCx, avCy, avR, 0, Math.PI * 2);
+        ctx.clip();
+        if (img) {
+            ctx.drawImage(img, avCx - avR, avCy - avR, avR * 2, avR * 2);
+        } else {
+            ctx.fillStyle = theme.panelAlt;
+            ctx.fillRect(avCx - avR, avCy - avR, avR * 2, avR * 2);
+            ctx.font = `${Math.floor(avR * 1.1)}px "Segoe UI Emoji", sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('👤', avCx, avCy);
+        }
+        ctx.restore();
+
+        const textX = x + 16 + avR * 2 + 16;
+        const maxTextW = w - (textX - x) - 14;
+        let ty = y + (payload.isChampion ? 30 : 26);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = theme.text;
+        ctx.font = `700 ${payload.isChampion ? 17 : 15}px Inter, "Segoe UI", Arial, sans-serif`;
+        _fillTextTruncated(ctx, payload.playerName, maxTextW, textX, ty);
+        ty += 22;
+        ctx.fillStyle = theme.textMuted;
+        ctx.font = '500 13px Inter, "Segoe UI", Arial, sans-serif';
+        _fillTextTruncated(ctx, payload.quote, maxTextW, textX, ty);
+        ty += payload.isChampion ? 38 : 34;
+        ctx.fillStyle = payload.isChampion ? theme.gold : theme.textMuted;
+        ctx.font = `${payload.isChampion ? '700' : '600'} ${payload.isChampion ? 15 : 13}px Inter, "Segoe UI", Arial, sans-serif`;
+        _fillTextTruncated(ctx, payload.winsLine, maxTextW, textX, ty);
+    };
+
+    for (const c of commands) {
+        if (c.op === 'label') {
+            ctx.fillStyle = theme.textMuted;
+            ctx.font = '600 11px Inter, "Segoe UI", Arial, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(String(c.text || '').toUpperCase(), outerPad, y + 11);
+            y += 24 + gap;
+        } else if (c.op === 'champion') {
+            const payload = _leaderboardCardPayloadFromEl(c.el, true);
+            const cw = Math.min(championW, contentW);
+            const cx = outerPad + (contentW - cw) / 2;
+            drawCard(cx, cw, championH, payload);
+            y += championH + gap;
+        } else if (c.op === 'grid') {
+            const els = c.elements;
+            const n = els.length;
+            const cols = Math.min(3, Math.max(1, n));
+            const rows = Math.ceil(n / cols);
+            const cardW = (contentW - gap * (cols - 1)) / cols;
+            for (let r = 0; r < rows; r++) {
+                for (let col = 0; col < cols; col++) {
+                    const i = r * cols + col;
+                    if (i >= n) break;
+                    const cx = outerPad + col * (cardW + gap);
+                    const payload = _leaderboardCardPayloadFromEl(els[i], false);
+                    drawCard(cx, cardW, cardH, payload);
+                }
+                y += cardH + gap;
+            }
+        }
+    }
+
+    return canvas;
+}
+
+function _downloadLeaderboardSnapshotBlob(blob, filename, canvasFallback) {
+    if (window.showSaveFilePicker && blob) {
+        return (async () => {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: filename,
+                    types: [{
+                        description: 'PNG image',
+                        accept: { 'image/png': ['.png'] }
+                    }]
+                });
+                const writable = await handle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+            } catch (err) {
+                if (err && err.name === 'AbortError') return;
+                _downloadLeaderboardSnapshotDataUrl(canvasFallback, filename);
+            }
+        })();
+    }
+    _downloadLeaderboardSnapshotDataUrl(canvasFallback, filename);
+    return Promise.resolve();
+}
+
+function _downloadLeaderboardSnapshotDataUrl(canvas, filename) {
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+/** Capture meeple cards as a PNG using Canvas 2D (same pattern as tally score snapshots). */
+export async function saveLeaderboardSnapshot() {
+    const container = document.getElementById('playersContainer');
+    if (!container) return;
+
+    const layout = _parsePlayersGridLayout(container);
+    const cardEls = layout.filter((i) => i.kind === 'card').map((i) => i.el);
+    if (!cardEls.length) {
+        showNotification('No meeple cards on the leaderboard to capture yet.');
+        return;
+    }
+
+    const commands = _buildLeaderboardSnapshotCommands(layout);
+    const urls = new Set();
+    cardEls.forEach((el) => {
+        const p = _leaderboardCardPayloadFromEl(el, false);
+        if (p.imageUrl) urls.add(p.imageUrl);
+    });
+    const imageMap = new Map();
+    await Promise.all([...urls].map(async (u) => {
+        imageMap.set(u, await _loadImageForCanvas(u));
+    }));
+
+    let canvas;
+    try {
+        canvas = _drawLeaderboardSnapshotCanvas(commands, imageMap);
+    } catch (err) {
+        showNotification('Could not create snapshot: ' + (err && err.message ? err.message : String(err)));
+        return;
+    }
+
+    const datePart = new Date().toISOString().slice(0, 10);
+    const filename = `scorekpr-leaderboard-${datePart}.png`;
+
+    await new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+            if (!blob) {
+                _downloadLeaderboardSnapshotDataUrl(canvas, filename);
+                resolve();
+                return;
+            }
+            _downloadLeaderboardSnapshotBlob(blob, filename, canvas).then(resolve).catch(resolve);
+        }, 'image/png');
+    });
 }

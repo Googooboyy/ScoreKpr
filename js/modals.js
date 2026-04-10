@@ -4,7 +4,8 @@ import {
     uiState,
     saveData,
     escapeHtml,
-    formatDate
+    formatDate,
+    playerIsGuest
 } from './data.js';
 import { getActivePlaygroup } from './playgroups.js';
 import { showLoginPrompt } from './auth-ui.js';
@@ -332,6 +333,93 @@ export function handleImageFileSelect(file, previewId, callback) {
     reader.readAsDataURL(file);
 }
 
+function buildEditWinRecordPlayerSelectHtml(selectedWinner) {
+    const playerSelect = document.getElementById('editPlayerSelect');
+    if (!playerSelect) return;
+    const coreP = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestP = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const opt = p => '<option value="' + escapeHtmlForExport(p) + '"' + (p === selectedWinner ? ' selected' : '') + '>' + escapeHtmlForExport(p) + '</option>';
+    let html = '';
+    if (guestP.length > 0 && coreP.length > 0) {
+        html += '<optgroup label="Campaign meeples">' + coreP.map(opt).join('') + '</optgroup>';
+        html += '<optgroup label="Guest meeples">' + guestP.map(opt).join('') + '</optgroup>';
+    } else {
+        html = [...coreP, ...guestP].sort((a, b) => a.localeCompare(b)).map(opt).join('');
+    }
+    playerSelect.innerHTML = html;
+}
+
+function mountEditEntryParticipantGrids(participants) {
+    const coreEl = document.getElementById('editEntryParticipantsCore');
+    const guestEl = document.getElementById('editEntryParticipantsGuests');
+    const guestLabel = document.getElementById('editEntryParticipantsGuestLabel');
+    if (!coreEl || !guestEl) return;
+
+    coreEl.innerHTML = '';
+    guestEl.innerHTML = '';
+
+    const coreP = data.players.filter(p => !playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+    const guestP = data.players.filter(p => playerIsGuest(p)).sort((a, b) => a.localeCompare(b));
+
+    const addToggle = (p, container) => {
+        const selected = participants.includes(p);
+        const playerData = data.playerData && data.playerData[p] ? data.playerData[p] : {};
+        const image = playerData.image || null;
+        const imgHtml = image
+            ? '<img src="' + escapeHtmlForExport(image) + '" alt="" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
+            : '<div class="selection-item-meeple-placeholder">👤</div>';
+        const guestBadge = playerIsGuest(p) ? '<span class="meeple-guest-badge">Guest</span>' : '';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'selection-item selection-item-meeple' + (selected ? ' selected' : '');
+        btn.setAttribute('data-player', p);
+        btn.innerHTML = '<div class="selection-item-meeple-img-wrap">' + imgHtml + '</div><span class="selection-item-meeple-name">' + escapeHtmlForExport(p) + guestBadge + '</span>';
+        btn.addEventListener('click', () => {
+            const idx = participants.indexOf(p);
+            if (idx >= 0) {
+                if (participants.length > 1) participants.splice(idx, 1);
+            } else {
+                participants.push(p);
+            }
+            btn.classList.toggle('selected', participants.includes(p));
+        });
+        container.appendChild(btn);
+    };
+
+    coreP.forEach(p => addToggle(p, coreEl));
+    guestP.forEach(p => addToggle(p, guestEl));
+
+    if (guestP.length > 0) {
+        if (guestLabel) guestLabel.style.display = 'block';
+        guestEl.style.display = 'grid';
+    } else {
+        if (guestLabel) guestLabel.style.display = 'none';
+        guestEl.style.display = 'none';
+    }
+
+    uiState.editEntryParticipants = participants;
+}
+
+/** Rebuild winner dropdown and participant grids while Edit Win Record is open (e.g. after inline add). */
+export function refreshEditWinRecordPlayerLists(participants) {
+    const sel = document.getElementById('editPlayerSelect');
+    const winner = sel ? sel.value : '';
+    buildEditWinRecordPlayerSelectHtml(winner);
+    mountEditEntryParticipantGrids(participants);
+}
+
+/** Keep participant toggles aligned when Victorious Meeple changes. */
+export function syncEditEntryWinnerFromDropdown() {
+    const newPlayer = document.getElementById('editPlayerSelect')?.value;
+    const parts = uiState.editEntryParticipants;
+    if (!newPlayer || !parts) return;
+    if (!parts.includes(newPlayer)) parts.push(newPlayer);
+    document.querySelectorAll('#editEntryParticipantsCore .selection-item-meeple, #editEntryParticipantsGuests .selection-item-meeple').forEach(btn => {
+        const p = btn.getAttribute('data-player');
+        btn.classList.toggle('selected', parts.includes(p));
+    });
+}
+
 export function openEditEntryModal(id) {
     const entry = data.entries.find(e => e.id === id);
     if (!entry) return;
@@ -346,39 +434,8 @@ export function openEditEntryModal(id) {
         '<option value="' + escapeHtmlForExport(g) + '"' + (g === entry.game ? ' selected' : '') + '>' + escapeHtmlForExport(g) + '</option>'
     ).join('');
 
-    const playerSelect = document.getElementById('editPlayerSelect');
-    playerSelect.innerHTML = data.players.map(p =>
-        '<option value="' + escapeHtmlForExport(p) + '"' + (p === entry.player ? ' selected' : '') + '>' + escapeHtmlForExport(p) + '</option>'
-    ).join('');
-
-    const participantsContainer = document.getElementById('editEntryParticipants');
-    if (participantsContainer) {
-        participantsContainer.innerHTML = '';
-        (data.players || []).sort((a, b) => a.localeCompare(b)).forEach(p => {
-            const selected = participants.includes(p);
-            const playerData = data.playerData && data.playerData[p] ? data.playerData[p] : {};
-            const image = playerData.image || null;
-            const imgHtml = image
-                ? '<img src="' + escapeHtmlForExport(image) + '" alt="" class="selection-item-meeple-img" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';"><div class="selection-item-meeple-placeholder" style="display:none;">👤</div>'
-                : '<div class="selection-item-meeple-placeholder">👤</div>';
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'selection-item selection-item-meeple' + (selected ? ' selected' : '');
-            btn.setAttribute('data-player', p);
-            btn.innerHTML = '<div class="selection-item-meeple-img-wrap">' + imgHtml + '</div><span class="selection-item-meeple-name">' + escapeHtmlForExport(p) + '</span>';
-            btn.addEventListener('click', () => {
-                const idx = participants.indexOf(p);
-                if (idx >= 0) {
-                    if (participants.length > 1) participants.splice(idx, 1);
-                } else {
-                    participants.push(p);
-                }
-                btn.classList.toggle('selected', participants.includes(p));
-            });
-            participantsContainer.appendChild(btn);
-        });
-        uiState.editEntryParticipants = participants;
-    }
+    buildEditWinRecordPlayerSelectHtml(entry.player);
+    mountEditEntryParticipantGrids(participants);
 
     document.getElementById('editDateInput').value = entry.date;
 
@@ -1045,6 +1102,377 @@ function _renderRecentHistoryHtml(entries, showCampaign) {
 let _tallyState = null;
 let _tallyCleanup = null;
 let _tallyShowOtherCampaigns = false;
+const _tallySnapshotTheme = {
+    bg: '#10131b',
+    panel: '#171c27',
+    panelAlt: '#141924',
+    border: '#2c3446',
+    text: '#f3f4f6',
+    textMuted: '#b8c0d4',
+    accent: '#f0c34e',
+    crown: '#ffd25f'
+};
+
+function _setTallyHeader(title, subtitle, hideText = false) {
+    const titleEl = document.getElementById('tallyTitle');
+    const subtitleEl = document.getElementById('tallySubtitle');
+    if (titleEl) titleEl.textContent = title || '';
+    if (subtitleEl) subtitleEl.textContent = subtitle || '';
+    const modalBox = document.querySelector('#scoreTallyModal .tally-modal');
+    if (modalBox) modalBox.classList.toggle('tally-header-minimal', !!hideText);
+}
+
+function _computeTallyTotals() {
+    if (!_tallyState?.participants?.length) return [];
+    const n = _tallyState.participants.length;
+    const totals = new Array(n).fill(0);
+    (_tallyState.scores || []).forEach(row => {
+        row.forEach((val, ci) => { totals[ci] += (parseFloat(val) || 0); });
+    });
+    return totals;
+}
+
+function _sanitizeSnapshotPart(value) {
+    return String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 48) || 'game';
+}
+
+function _downloadCanvasAsPng(canvas, filename) {
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+function _downloadUrlAsPng(url, filename) {
+    if (!url) return;
+    fetch(url)
+        .then(resp => resp.blob())
+        .then(blob => {
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        })
+        .catch(() => {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        });
+}
+
+function _buildSnapshotFilename(gameName, playedDate, winnerName) {
+    const safeGame = _sanitizeSnapshotPart(gameName).slice(0, 18);
+    const safeWinner = _sanitizeSnapshotPart(winnerName || 'winner').slice(0, 18);
+    const datePart = (playedDate && /^\d{4}-\d{2}-\d{2}$/.test(playedDate))
+        ? playedDate
+        : new Date().toISOString().slice(0, 10);
+    return `score-snapshot-${safeGame}-${datePart}-${safeWinner}.png`;
+}
+
+function _canvasToBlob(canvas) {
+    return new Promise((resolve, reject) => {
+        canvas.toBlob(blob => {
+            if (!blob) {
+                reject(new Error('Could not create image blob'));
+                return;
+            }
+            resolve(blob);
+        }, 'image/png');
+    });
+}
+
+function _releaseTallySnapshotResources() {
+    const snapshot = _tallyState?._snapshot;
+    if (snapshot?.localUrl) {
+        URL.revokeObjectURL(snapshot.localUrl);
+    }
+}
+
+function _getTallySnapshotDisplayUrl() {
+    const snapshot = _tallyState?._snapshot;
+    if (!snapshot) return null;
+    return snapshot.remoteUrl || snapshot.localUrl || null;
+}
+
+function _setTallyStage3SnapshotPreview() {
+    const img = document.getElementById('tallySnapshotPreviewImg');
+    const empty = document.getElementById('tallySnapshotPreviewEmpty');
+    const downloadBtn = document.getElementById('tallySnapshotDownloadBtn');
+    const viewBtn = document.getElementById('tallySnapshotViewBtn');
+    if (!img || !empty || !downloadBtn || !viewBtn) return;
+
+    const snapshot = _tallyState?._snapshot;
+    const url = _getTallySnapshotDisplayUrl();
+    if (url) {
+        img.src = url;
+        img.style.display = 'block';
+        empty.style.display = 'none';
+        downloadBtn.disabled = false;
+        viewBtn.disabled = false;
+        return;
+    }
+
+    img.removeAttribute('src');
+    img.style.display = 'none';
+    empty.style.display = '';
+    if (snapshot?.uploadError) {
+        empty.textContent = 'Snapshot unavailable';
+    } else if (snapshot?.isGenerating) {
+        empty.textContent = 'Generating snapshot…';
+    } else {
+        empty.textContent = 'Snapshot not available';
+    }
+    downloadBtn.disabled = true;
+    viewBtn.disabled = true;
+}
+
+function _openTallySnapshotWindow() {
+    const url = _getTallySnapshotDisplayUrl();
+    if (!url) {
+        showNotification('Snapshot not ready yet');
+        return;
+    }
+    window.open(url, '_blank', 'noopener');
+}
+
+function _drawTallySnapshotCanvas({ game, participants, rounds, totals }) {
+    const scale = Math.min(2.4, window.devicePixelRatio > 1 ? window.devicePixelRatio : 2);
+    const outerPad = 24;
+    const panelPad = 18;
+    const headerH = 66;
+    const rowH = 42;
+    const roundColW = 156;
+    const playerColW = 128;
+    const cols = participants.length;
+    const tableW = roundColW + (cols * playerColW);
+    const bodyRows = rounds.length || 1;
+    const tableH = rowH * (1 + bodyRows + 1); // header + body + total
+    const canvasW = outerPad * 2 + panelPad * 2 + tableW;
+    const canvasH = outerPad * 2 + panelPad * 2 + headerH + tableH + 14;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(canvasW * scale);
+    canvas.height = Math.round(canvasH * scale);
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle = _tallySnapshotTheme.bg;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+
+    const panelX = outerPad;
+    const panelY = outerPad;
+    const panelW = canvasW - (outerPad * 2);
+    const panelH = canvasH - (outerPad * 2);
+    ctx.fillStyle = _tallySnapshotTheme.panel;
+    ctx.strokeStyle = _tallySnapshotTheme.border;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(panelX, panelY, panelW, panelH, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    const titleX = panelX + panelPad;
+    const titleY = panelY + 24;
+    ctx.fillStyle = _tallySnapshotTheme.textMuted;
+    ctx.font = '600 12px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText('ScoreKpr snapshot', titleX, titleY);
+    ctx.fillStyle = _tallySnapshotTheme.text;
+    ctx.font = '700 20px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText(game || 'Tally Scores', titleX, titleY + 22);
+    ctx.fillStyle = _tallySnapshotTheme.textMuted;
+    ctx.font = '500 12px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText(new Date().toLocaleString(), titleX, titleY + 42);
+
+    const tableX = panelX + panelPad;
+    const tableY = panelY + panelPad + headerH;
+
+    // Header row
+    ctx.fillStyle = _tallySnapshotTheme.panelAlt;
+    ctx.fillRect(tableX, tableY, tableW, rowH);
+    ctx.strokeStyle = _tallySnapshotTheme.border;
+    ctx.strokeRect(tableX + 0.5, tableY + 0.5, tableW - 1, rowH - 1);
+    ctx.fillStyle = _tallySnapshotTheme.textMuted;
+    ctx.font = '600 12px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText('Round', tableX + 12, tableY + rowH / 2);
+
+    participants.forEach((p, idx) => {
+        const cx = tableX + roundColW + (idx * playerColW);
+        ctx.strokeStyle = _tallySnapshotTheme.border;
+        ctx.strokeRect(cx + 0.5, tableY + 0.5, playerColW - 1, rowH - 1);
+        ctx.fillStyle = p.isTemp ? _tallySnapshotTheme.textMuted : _tallySnapshotTheme.text;
+        ctx.font = `600 13px Inter, "Segoe UI", Arial, sans-serif`;
+        ctx.fillText(p.name, cx + 10, tableY + rowH / 2);
+    });
+
+    if (!rounds.length) {
+        const y = tableY + rowH;
+        ctx.fillStyle = _tallySnapshotTheme.panel;
+        ctx.fillRect(tableX, y, tableW, rowH);
+        ctx.strokeStyle = _tallySnapshotTheme.border;
+        ctx.strokeRect(tableX + 0.5, y + 0.5, tableW - 1, rowH - 1);
+        ctx.fillStyle = _tallySnapshotTheme.textMuted;
+        ctx.font = '500 13px Inter, "Segoe UI", Arial, sans-serif';
+        ctx.fillText('No rounds scored yet', tableX + 12, y + rowH / 2);
+    } else {
+        rounds.forEach((round, ri) => {
+            const y = tableY + rowH + (ri * rowH);
+            ctx.fillStyle = ri % 2 === 0 ? _tallySnapshotTheme.panel : _tallySnapshotTheme.panelAlt;
+            ctx.fillRect(tableX, y, tableW, rowH);
+            ctx.strokeStyle = _tallySnapshotTheme.border;
+            ctx.strokeRect(tableX + 0.5, y + 0.5, tableW - 1, rowH - 1);
+            ctx.fillStyle = _tallySnapshotTheme.textMuted;
+            ctx.font = '500 12px Inter, "Segoe UI", Arial, sans-serif';
+            ctx.fillText(round.name, tableX + 12, y + rowH / 2);
+
+            round.values.forEach((val, ci) => {
+                const cx = tableX + roundColW + (ci * playerColW);
+                ctx.strokeStyle = _tallySnapshotTheme.border;
+                ctx.strokeRect(cx + 0.5, y + 0.5, playerColW - 1, rowH - 1);
+                ctx.fillStyle = _tallySnapshotTheme.text;
+                ctx.font = '600 14px Inter, "Segoe UI", Arial, sans-serif';
+                ctx.fillText(String(val), cx + 10, y + rowH / 2);
+            });
+        });
+    }
+
+    // Totals row
+    const totalsY = tableY + rowH + (bodyRows * rowH);
+    const maxTotal = totals.length ? Math.max(...totals) : 0;
+    ctx.fillStyle = _tallySnapshotTheme.panelAlt;
+    ctx.fillRect(tableX, totalsY, tableW, rowH);
+    ctx.strokeStyle = _tallySnapshotTheme.border;
+    ctx.strokeRect(tableX + 0.5, totalsY + 0.5, tableW - 1, rowH - 1);
+    ctx.fillStyle = _tallySnapshotTheme.accent;
+    ctx.font = '700 13px Inter, "Segoe UI", Arial, sans-serif';
+    ctx.fillText('Total', tableX + 12, totalsY + rowH / 2);
+
+    totals.forEach((total, ci) => {
+        const cx = tableX + roundColW + (ci * playerColW);
+        const isLeader = maxTotal > 0 && total === maxTotal;
+        ctx.strokeStyle = _tallySnapshotTheme.border;
+        ctx.strokeRect(cx + 0.5, totalsY + 0.5, playerColW - 1, rowH - 1);
+        ctx.fillStyle = isLeader ? _tallySnapshotTheme.crown : _tallySnapshotTheme.accent;
+        ctx.font = '700 15px Inter, "Segoe UI", Arial, sans-serif';
+        ctx.fillText(isLeader ? `${total}  👑` : String(total), cx + 10, totalsY + rowH / 2);
+    });
+
+    return canvas;
+}
+
+function _exportTallySnapshot() {
+    if (!_tallyState?.game || !_tallyState?.participants?.length) {
+        showNotification('Pick a game and at least one meeple first');
+        return;
+    }
+
+    const rounds = (_tallyState.scores || []).map((row, ri) => ({
+        name: (_tallyState.roundNames?.[ri] || `Rnd ${ri + 1}`),
+        values: row.map(v => (parseFloat(v) || 0))
+    }));
+    const totals = _computeTallyTotals();
+    const canvas = _drawTallySnapshotCanvas({
+        game: _tallyState.game,
+        participants: _tallyState.participants,
+        rounds,
+        totals
+    });
+    const filename = _buildSnapshotFilename(_tallyState.game, new Date().toISOString().slice(0, 10), _tallyState._pendingWinner?.name || 'winner');
+    _downloadCanvasAsPng(canvas, filename);
+}
+
+async function _startTallySnapshotBackground(winnerName) {
+    if (!_tallyState) return;
+    if (_tallyState._snapshot?.localUrl || _tallyState._snapshot?.isGenerating) return;
+    _tallyState._snapshot = {
+        isGenerating: true,
+        localUrl: null,
+        remoteUrl: null,
+        storagePath: null,
+        uploadError: null,
+        uploadPromise: null
+    };
+    _setTallyStage3SnapshotPreview();
+    try {
+        const rounds = (_tallyState.scores || []).map((row, ri) => ({
+            name: (_tallyState.roundNames?.[ri] || `Rnd ${ri + 1}`),
+            values: row.map(v => (parseFloat(v) || 0))
+        }));
+        const totals = _computeTallyTotals();
+        const canvas = _drawTallySnapshotCanvas({
+            game: _tallyState.game,
+            participants: _tallyState.participants,
+            rounds,
+            totals
+        });
+        const blob = await _canvasToBlob(canvas);
+        const localUrl = URL.createObjectURL(blob);
+        if (!_tallyState?._snapshot) return;
+        _tallyState._snapshot.isGenerating = false;
+        _tallyState._snapshot.localUrl = localUrl;
+
+        const pg = getActivePlaygroup();
+        if (pg?.id) {
+            const storagePath = `images/snapshots/${pg.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${_sanitizeSnapshotPart(_tallyState.game)}-${_sanitizeSnapshotPart(winnerName)}.png`;
+            _tallyState._snapshot.uploadPromise = (async () => {
+                await uploadImageToStorage(storagePath, blob, { contentType: 'image/png' });
+                const remoteUrl = getPublicImageUrl(storagePath);
+                if (_tallyState?._snapshot) {
+                    _tallyState._snapshot.remoteUrl = remoteUrl || null;
+                    _tallyState._snapshot.storagePath = storagePath;
+                }
+            })().catch((err) => {
+                if (_tallyState?._snapshot) {
+                    _tallyState._snapshot.uploadError = err;
+                }
+            }).finally(() => {
+                _setTallyStage3SnapshotPreview();
+            });
+        }
+    } catch (err) {
+        if (_tallyState?._snapshot) {
+            _tallyState._snapshot.isGenerating = false;
+            _tallyState._snapshot.uploadError = err;
+        }
+    } finally {
+        _setTallyStage3SnapshotPreview();
+    }
+}
+
+async function _resolveSnapshotForSave() {
+    const snapshot = _tallyState?._snapshot;
+    if (!snapshot) return { url: null, path: null };
+    // If the capture was just triggered, give background generation a brief window.
+    for (let i = 0; i < 20 && snapshot.isGenerating; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (snapshot.uploadPromise) {
+        try {
+            await snapshot.uploadPromise;
+        } catch {
+            // keep save flow resilient if upload fails
+        }
+    }
+    return {
+        url: snapshot.remoteUrl || null,
+        path: snapshot.storagePath || null
+    };
+}
 
 export function openScoreTabulator(preselectGame = null) {
     const modal = document.getElementById('scoreTallyModal');
@@ -1056,7 +1484,8 @@ export function openScoreTabulator(preselectGame = null) {
         participants: [], // { name, isTemp }
         roundCount: 0,
         roundNames: [],   // editable label per round
-        scores: []        // [roundIndex][participantIndex]
+        scores: [],       // [roundIndex][participantIndex]
+        _snapshot: null
     };
 
     // Populate game selection grid (image-based, like Add a Win) and show empty state when no games
@@ -1086,9 +1515,9 @@ export function openScoreTabulator(preselectGame = null) {
 
     // Show stage 1
     _tallyShowStage(1);
-    document.getElementById('tallyTitle').textContent = 'Tally Scores';
-    document.getElementById('tallySubtitle').textContent = 'Set up your game';
+    _setTallyHeader('Tally Scores', 'Set up your game', false);
     document.getElementById('tallyWinnerBar').innerHTML = '';
+    _setTallyStage3SnapshotPreview();
     _updateTallyStartBtn();
 
     // ── Event handlers ──
@@ -1117,14 +1546,12 @@ export function openScoreTabulator(preselectGame = null) {
         if (!_tallyState.game || _tallyState.participants.length < 2) return;
         _initScoreTable();
         _tallyShowStage(2);
-        document.getElementById('tallyTitle').textContent = _tallyState.game;
-        document.getElementById('tallySubtitle').textContent = 'Enter scores for each round';
+        _setTallyHeader('', '', true);
     };
 
     const onBack = () => {
         _tallyShowStage(1);
-        document.getElementById('tallyTitle').textContent = 'Tally Scores';
-        document.getElementById('tallySubtitle').textContent = 'Set up your game';
+        _setTallyHeader('Tally Scores', 'Set up your game', false);
     };
 
     // ── Round-type picker (always visible on Stage 2) ─────────────────────────
@@ -1165,13 +1592,41 @@ export function openScoreTabulator(preselectGame = null) {
     // ── Stage 3 (confirm date & save) ─────────────────────────────────────────
     const onBackToScores = () => {
         _tallyShowStage(2);
-        document.getElementById('tallyTitle').textContent = _tallyState.game;
-        document.getElementById('tallySubtitle').textContent = 'Enter scores for each round';
+        _setTallyHeader('', '', true);
     };
 
     const onSaveWin = () => _tallySaveWin();
 
     const onRecord = () => _tallyRecordWin();
+    const onSnapshotView = () => _openTallySnapshotWindow();
+    const onSnapshotDownload = () => {
+        const url = _getTallySnapshotDisplayUrl();
+        if (!url) {
+            showNotification('Snapshot not ready yet');
+            return;
+        }
+        const date = document.getElementById('tallyWinDate')?.value || new Date().toISOString().slice(0, 10);
+        const winnerName = _tallyState?._pendingWinner?.name || 'winner';
+        const filename = _buildSnapshotFilename(_tallyState?.game || 'game', date, winnerName);
+        _downloadUrlAsPng(url, filename);
+    };
+    const onSnapshot = () => {
+        const btn = document.getElementById('tallySnapshotBtn');
+        if (!btn) return;
+        btn.disabled = true;
+        const oldText = btn.textContent;
+        btn.textContent = 'Rendering...';
+        try {
+            _exportTallySnapshot();
+        } catch (err) {
+            showNotification('Could not create snapshot: ' + (err?.message || err));
+        } finally {
+            setTimeout(() => {
+                btn.disabled = false;
+                btn.textContent = oldText;
+            }, 250);
+        }
+    };
 
     const closeBtn          = document.getElementById('tallyClose');
     const cancelBtn         = document.getElementById('tallyCancelBtn');
@@ -1184,6 +1639,10 @@ export function openScoreTabulator(preselectGame = null) {
     const roundOptContainer = document.getElementById('tallyRoundPicker');
     const roundConfirmBtn   = document.getElementById('tallyRoundConfirmBtn');
     const recordBtn         = document.getElementById('tallyRecordBtn');
+    const snapshotBtn       = document.getElementById('tallySnapshotBtn');
+    const snapshotPreviewBtn = document.getElementById('tallySnapshotPreviewBtn');
+    const snapshotDownloadBtn = document.getElementById('tallySnapshotDownloadBtn');
+    const snapshotViewBtn = document.getElementById('tallySnapshotViewBtn');
     const backToScoresBtn   = document.getElementById('tallyBackToScoresBtn');
     const saveWinBtn        = document.getElementById('tallySaveWinBtn');
 
@@ -1201,6 +1660,10 @@ export function openScoreTabulator(preselectGame = null) {
     roundConfirmBtn.addEventListener('click', onRoundConfirm);
     customInput.addEventListener('keypress', onRoundCustomKey);
     recordBtn.addEventListener('click', onRecord);
+    snapshotBtn.addEventListener('click', onSnapshot);
+    snapshotPreviewBtn.addEventListener('click', onSnapshotView);
+    snapshotDownloadBtn.addEventListener('click', onSnapshotDownload);
+    snapshotViewBtn.addEventListener('click', onSnapshotView);
     backToScoresBtn.addEventListener('click', onBackToScores);
     saveWinBtn.addEventListener('click', onSaveWin);
 
@@ -1218,6 +1681,10 @@ export function openScoreTabulator(preselectGame = null) {
         roundConfirmBtn.removeEventListener('click', onRoundConfirm);
         customInput.removeEventListener('keypress', onRoundCustomKey);
         recordBtn.removeEventListener('click', onRecord);
+        snapshotBtn.removeEventListener('click', onSnapshot);
+        snapshotPreviewBtn.removeEventListener('click', onSnapshotView);
+        snapshotDownloadBtn.removeEventListener('click', onSnapshotDownload);
+        snapshotViewBtn.removeEventListener('click', onSnapshotView);
         backToScoresBtn.removeEventListener('click', onBackToScores);
         saveWinBtn.removeEventListener('click', onSaveWin);
     };
@@ -1230,6 +1697,7 @@ export function closeScoreTabulator() {
     const modal = document.getElementById('scoreTallyModal');
     if (modal) modal.classList.remove('active');
     if (_tallyCleanup) { _tallyCleanup(); _tallyCleanup = null; }
+    _releaseTallySnapshotResources();
     _tallyState = null;
 }
 
@@ -1661,6 +2129,7 @@ async function _tallyRecordWin() {
     _tallyState._pendingWinner = winner;
     _tallyState._pendingGame   = gameName;
     _tallyState._pendingPts    = totals[winnerIdx];
+    _startTallySnapshotBackground(winner.name);
 
     setTimeout(() => {
         if (!_tallyState) return; // modal was closed in the meantime
@@ -1668,24 +2137,37 @@ async function _tallyRecordWin() {
         document.getElementById('tallyCelebSub').textContent =
             'wins ' + gameName + ' with ' + _tallyState._pendingPts + ' pts';
         document.getElementById('tallyWinDate').value = new Date().toISOString().split('T')[0];
-        document.getElementById('tallyTitle').textContent = '🎉 Winner!';
-        document.getElementById('tallySubtitle').textContent = 'Confirm and save the win';
+        _setTallyStage3SnapshotPreview();
+        _setTallyHeader('🎉 Winner!', 'Confirm and save the win', false);
         recordBtn.disabled = false;
         recordBtn.textContent = 'Review win and set date';
         _tallyShowStage(3);
     }, 1400);
 }
 
-function _tallySaveWin() {
+async function _tallySaveWin() {
     if (!_tallyState) return;
     const date = document.getElementById('tallyWinDate').value;
     if (!date) { showNotification('Please pick a date'); return; }
+    const saveBtn = document.getElementById('tallySaveWinBtn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
     const game   = _tallyState._pendingGame || _tallyState.game;
     const winner = _tallyState._pendingWinner;
     const participants = (_tallyState.participants || []).filter(p => !p.isTemp).map(p => p.name);
+    const snapshot = await _resolveSnapshotForSave();
     closeScoreTabulator();
     window.dispatchEvent(new CustomEvent('tallyComplete', {
-        detail: { game, winner: winner.name, date, participants }
+        detail: {
+            game,
+            winner: winner.name,
+            date,
+            participants,
+            scoreSnapshotUrl: snapshot.url,
+            scoreSnapshotStoragePath: snapshot.path
+        }
     }));
 }
 
@@ -1782,6 +2264,7 @@ export function showNotification(message) {
 // ─── Simple image lightbox for player avatars ──────────────────────────────────
 
 let _lightboxCleanup = null;
+let _scoreSnapshotCleanup = null;
 
 export function openImageLightbox(imageUrl, playerName, canCustomize, onCustomize) {
     const overlay = document.getElementById('playerImageLightbox');
@@ -1846,6 +2329,81 @@ export function closeImageLightbox() {
     if (_lightboxCleanup) {
         _lightboxCleanup();
         _lightboxCleanup = null;
+    }
+}
+
+export function openScoreSnapshotModal(imageUrl, title, filename) {
+    const overlay = document.getElementById('scoreSnapshotModal');
+    const img = document.getElementById('scoreSnapshotImg');
+    const caption = document.getElementById('scoreSnapshotCaption');
+    const closeBtn = document.getElementById('scoreSnapshotClose');
+    const downloadBtn = document.getElementById('scoreSnapshotDownloadBtn');
+    if (!overlay || !img || !caption || !closeBtn || !downloadBtn || !imageUrl) return;
+
+    img.src = imageUrl;
+    caption.textContent = title || 'Score snapshot';
+
+    const onOverlayClick = (e) => {
+        if (e.target === overlay) closeScoreSnapshotModal();
+    };
+    const onKeydown = (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            closeScoreSnapshotModal();
+        }
+    };
+    const onClose = () => closeScoreSnapshotModal();
+    const onDownload = () => {
+        const outName = filename || 'score-snapshot.png';
+        fetch(imageUrl)
+            .then(resp => resp.blob())
+            .then(blob => {
+                const blobUrl = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = blobUrl;
+                link.download = outName;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+            })
+            .catch(() => {
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                link.download = outName;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+            });
+    };
+
+    closeBtn.addEventListener('click', onClose);
+    overlay.addEventListener('click', onOverlayClick);
+    document.addEventListener('keydown', onKeydown);
+    downloadBtn.addEventListener('click', onDownload);
+
+    _scoreSnapshotCleanup = () => {
+        closeBtn.removeEventListener('click', onClose);
+        overlay.removeEventListener('click', onOverlayClick);
+        document.removeEventListener('keydown', onKeydown);
+        downloadBtn.removeEventListener('click', onDownload);
+    };
+
+    overlay.classList.add('active');
+    overlay.setAttribute('aria-hidden', 'false');
+    closeBtn.focus();
+}
+
+export function closeScoreSnapshotModal() {
+    const overlay = document.getElementById('scoreSnapshotModal');
+    if (!overlay) return;
+    overlay.classList.remove('active');
+    overlay.setAttribute('aria-hidden', 'true');
+    const img = document.getElementById('scoreSnapshotImg');
+    if (img) img.removeAttribute('src');
+    if (_scoreSnapshotCleanup) {
+        _scoreSnapshotCleanup();
+        _scoreSnapshotCleanup = null;
     }
 }
 

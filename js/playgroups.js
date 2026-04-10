@@ -1,6 +1,7 @@
 import { fetchPlaygroups, createPlaygroup, getOrCreateInviteToken, leavePlaygroup, fetchCampaignJoinInfo, updateCampaignJoinRequirements } from './supabase.js';
 import { showNotification, showModal, openTierInfoModal } from './modals.js';
 import { isAdminMode } from './admin.js';
+import { copyTextWithFallback } from './clipboard.js';
 
 function getTierLabel(tier) {
     const t = parseInt(tier, 10) || 1;
@@ -148,7 +149,7 @@ function formatLine2(travellers, tier1Count, tier2Count, tier3Count, allowedTier
     return 'There are currently ' + travellerLabel + ' and an active party of ' + breakdown.total + ' ' + meepleLabel + ' (' + breakdown.phrase + ').';
 }
 
-async function updatePlaygroupCountBadge() {
+export async function updatePlaygroupCountBadge() {
     const tierPill = document.getElementById('planPillTier');
     const campaignsPill = document.getElementById('planPillCampaigns');
     const meeplesRow = document.getElementById('meeplesRow');
@@ -201,18 +202,20 @@ async function updatePlaygroupCountBadge() {
             const tier1 = joinInfo.tier1Count ?? 0;
             const tier2 = joinInfo.tier2Count ?? 0;
             const tier3 = joinInfo.tier3Count ?? 0;
-            const allowedTiers = joinInfo.allowedTiers ?? [1, 2, 3];
+            const rawTiers = joinInfo.allowedTiers ?? joinInfo.allowed_tiers ?? [1, 2, 3];
+            const allowedTiers = Array.isArray(rawTiers) ? rawTiers.map(t => parseInt(t, 10) || t).filter(t => t >= 1 && t <= 3) : [1, 2, 3];
+            if (allowedTiers.length === 0) allowedTiers.push(1, 2, 3);
 
-            const showAccepts = window._scorekeeperShowCampaignAcceptsText !== false;
+            const showAccepts = true;
             const acceptsAll = allowedTiers && allowedTiers.length >= 3 &&
                 allowedTiers.includes(1) && allowedTiers.includes(2) && allowedTiers.includes(3);
             const acceptsPhrase = acceptsAll ? 'everyone' : 'only ' + formatAcceptsRequirement(allowedTiers);
-            if (acceptsText) acceptsText.textContent = showAccepts ? 'This campaign accepts ' + acceptsPhrase + '. ' : '';
+            if (acceptsText) acceptsText.textContent = 'This campaign accepts ' + acceptsPhrase + '. ';
             if (populationText) populationText.textContent = formatLine2(travellers, tier1, tier2, tier3, allowedTiers);
 
             const isOwner = pg.role === 'owner';
             if (changeBtn) {
-                changeBtn.style.display = (isOwner && showAccepts) ? 'inline-flex' : 'none';
+                changeBtn.style.display = isOwner ? 'inline-flex' : 'none';
                 if (isOwner) {
                     changeBtn.onclick = () => openCampaignSettingsModal();
                 }
@@ -291,7 +294,10 @@ export function setupPlaygroupUI() {
                 const token = await getOrCreateInviteToken(pg.id);
                 const url = new URL(window.location.origin + window.location.pathname);
                 url.searchParams.set('invite', token);
-                await navigator.clipboard.writeText(url.toString());
+                const copyResult = await copyTextWithFallback(url.toString(), { promptLabel: 'Copy campaign invite link:' });
+                if (copyResult.method === 'none') {
+                    throw new Error('Clipboard is unavailable in this browser.');
+                }
                 if (invitePlaygroupName) invitePlaygroupName.textContent = pg.name;
                 inviteModal.classList.add('active');
             } catch (err) {
@@ -479,7 +485,7 @@ export async function openCampaignSettingsModal() {
             }
             close();
             showNotification('Join requirements updated.');
-            updatePlaygroupCountBadge();
+            await updatePlaygroupCountBadge();
         } catch (err) {
             showNotification('Could not update: ' + (err.message || err));
         } finally {

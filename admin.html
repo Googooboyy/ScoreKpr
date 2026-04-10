@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard — The Scorekeeper</title>
+    <link rel="icon" href="favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="manifest" href="site.webmanifest">
+    <meta name="theme-color" content="#0a0a0f">
+    <meta name="apple-mobile-web-app-title" content="ScoreKpr">
+    <title>Admin Dashboard — ScoreKpr</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&display=swap">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -100,6 +107,7 @@
                 <div class="admin-bulk-bar" id="usersBulkBar" style="display:none;">
                     <span id="usersBulkCount">0 selected</span>
                     <button class="admin-action-btn admin-action-success" id="usersBulkSendMessage" title="Send selected users a personal message">Send message</button>
+                    <button class="admin-action-btn" id="usersBulkClearMessages" title="Clear personal message banner for selected users">Clear message</button>
                     <button class="admin-action-btn admin-action-danger" id="usersBulkRemoveCampaigns">Remove from campaigns</button>
                     <button class="admin-action-btn admin-action-danger" id="usersBulkDeleteAccounts">Delete accounts</button>
                     <button class="admin-action-btn" id="usersBulkClear">Clear</button>
