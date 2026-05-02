@@ -24,7 +24,7 @@ import {
     getPublicImageUrl
 } from './supabase.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { showModal, hideModal, handleImageFileSelect, showNotification, fireConfetti, closeGameImageModal, closePlayerImageModal, resetPlayerCustomization, closeEditEntryModal, saveGameImage, savePlayerImage, saveEditedEntry, closePlayerProfileModal, openScoreTabulator, showJoinRejectionModal, refreshEditWinRecordPlayerLists, syncEditEntryWinnerFromDropdown } from './modals.js';
+import { showModal, hideModal, handleImageFileSelect, showNotification, fireConfetti, closeGameImageModal, closePlayerImageModal, resetPlayerCustomization, closeEditEntryModal, saveGameImage, savePlayerImage, saveEditedEntry, closePlayerProfileModal, openScoreTabulator, showJoinRejectionModal, refreshEditWinRecordPlayerLists, syncEditEntryWinnerFromDropdown } from './modals.js?v=20260501c';
 import {
     renderGameSelection,
     renderPlayerSelection,
@@ -212,7 +212,9 @@ export function setupEventListeners() {
                 });
             });
         } catch (err) {
-            showNotification('Could not save win: ' + (err.message || err));
+            const reason = err?.message || err?.details || err?.hint || String(err);
+            showNotification('Could not save win: ' + reason);
+            console.error('[ScoreKpr tallyComplete save failed]', err);
         }
     });
 

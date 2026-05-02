@@ -1240,6 +1240,24 @@ function _setTallyStage3SnapshotPreview() {
     viewBtn.disabled = true;
 }
 
+function _resetTallyActionButtons() {
+    const recordBtn = document.getElementById('tallyRecordBtn');
+    if (recordBtn) {
+        recordBtn.disabled = false;
+        recordBtn.textContent = 'Review win and set date';
+    }
+    const saveWinBtn = document.getElementById('tallySaveWinBtn');
+    if (saveWinBtn) {
+        saveWinBtn.disabled = false;
+        saveWinBtn.textContent = 'Save Win 🎉';
+    }
+    const snapshotBtn = document.getElementById('tallySnapshotBtn');
+    if (snapshotBtn) {
+        snapshotBtn.disabled = false;
+        snapshotBtn.textContent = '📸 Snapshot';
+    }
+}
+
 function _openTallySnapshotWindow() {
     const url = _getTallySnapshotDisplayUrl();
     if (!url) {
@@ -1463,7 +1481,11 @@ async function _resolveSnapshotForSave() {
     }
     if (snapshot.uploadPromise) {
         try {
-            await snapshot.uploadPromise;
+            const timeoutMs = 4000;
+            await Promise.race([
+                snapshot.uploadPromise,
+                new Promise((resolve) => setTimeout(resolve, timeoutMs))
+            ]);
         } catch {
             // keep save flow resilient if upload fails
         }
@@ -1518,6 +1540,8 @@ export function openScoreTabulator(preselectGame = null) {
     _setTallyHeader('Tally Scores', 'Set up your game', false);
     document.getElementById('tallyWinnerBar').innerHTML = '';
     _setTallyStage3SnapshotPreview();
+    // Modal DOM is reused across opens, so action buttons must be reset each session.
+    _resetTallyActionButtons();
     _updateTallyStartBtn();
 
     // ── Event handlers ──
@@ -2131,8 +2155,9 @@ async function _tallyRecordWin() {
     _tallyState._pendingPts    = totals[winnerIdx];
     _startTallySnapshotBackground(winner.name);
 
+    const sessionRef = _tallyState;
     setTimeout(() => {
-        if (!_tallyState) return; // modal was closed in the meantime
+        if (!_tallyState || _tallyState !== sessionRef) return; // modal was closed/reopened
         document.getElementById('tallyCelebName').textContent = winner.name;
         document.getElementById('tallyCelebSub').textContent =
             'wins ' + gameName + ' with ' + _tallyState._pendingPts + ' pts';
@@ -2150,25 +2175,46 @@ async function _tallySaveWin() {
     const date = document.getElementById('tallyWinDate').value;
     if (!date) { showNotification('Please pick a date'); return; }
     const saveBtn = document.getElementById('tallySaveWinBtn');
+    const originalSaveText = saveBtn ? saveBtn.textContent : 'Save Win 🎉';
     if (saveBtn) {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Saving...';
     }
-    const game   = _tallyState._pendingGame || _tallyState.game;
-    const winner = _tallyState._pendingWinner;
-    const participants = (_tallyState.participants || []).filter(p => !p.isTemp).map(p => p.name);
-    const snapshot = await _resolveSnapshotForSave();
-    closeScoreTabulator();
-    window.dispatchEvent(new CustomEvent('tallyComplete', {
-        detail: {
-            game,
-            winner: winner.name,
-            date,
-            participants,
-            scoreSnapshotUrl: snapshot.url,
-            scoreSnapshotStoragePath: snapshot.path
+    try {
+        const game = _tallyState._pendingGame || _tallyState.game;
+        const winner = _tallyState._pendingWinner;
+        if (!winner?.name || !game) {
+            throw new Error('Winner or game is missing. Please go back and review scores.');
         }
-    }));
+        const participants = (_tallyState.participants || []).filter(p => !p.isTemp).map(p => p.name);
+        // Do not block win saving on snapshot processing/upload.
+        // Snapshot is optional metadata; reliability of entry save is prioritized.
+        const snapshot = {
+            url: _tallyState?._snapshot?.remoteUrl || null,
+            path: _tallyState?._snapshot?.storagePath || null
+        };
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalSaveText || 'Save Win 🎉';
+        }
+        closeScoreTabulator();
+        window.dispatchEvent(new CustomEvent('tallyComplete', {
+            detail: {
+                game,
+                winner: winner.name,
+                date,
+                participants,
+                scoreSnapshotUrl: snapshot.url,
+                scoreSnapshotStoragePath: snapshot.path
+            }
+        }));
+    } catch (err) {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = originalSaveText || 'Save Win 🎉';
+        }
+        showNotification('Could not finish save: ' + (err?.message || err));
+    }
 }
 
 // ─── End Score Tabulator ──────────────────────────────────────────────────────

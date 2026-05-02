@@ -1,6 +1,6 @@
 import { setRenderCallback, loadData, resetData, data } from './data.js';
 import { renderAll, toggleVictoryRoster, nextStep } from './render.js';
-import { setupEventListeners, showSection, showNewPlayerInput } from './events.js';
+import { setupEventListeners, showSection, showNewPlayerInput } from './events.js?v=20260501c';
 import { onAuthStateChange, getSession, getInviteTokenFromStorage, saveInviteTokenToStorage, clearInviteTokenFromStorage, getInviteIntentFromStorage, clearInviteIntent, setInviteIntentToJoin, signInWithOAuth } from './auth.js';
 
 function hasInviteToken() {
@@ -9,7 +9,7 @@ function hasInviteToken() {
 import { loadPlaygroups, setActivePlaygroup, setOnPlaygroupChange, setupPlaygroupUI, getActivePlaygroup, ensureLastCampaignSelected, updateUserPlanLabelFromTier, updatePlaygroupCountBadge } from './playgroups.js';
 import { setupAuthButtons, updateAuthUI, updateEditability, syncReadOnlyBanner, updateAdminUI } from './auth-ui.js';
 import { redeemInviteToken, resolveInviteToken, fetchPlaygroupName, fetchActiveAnnouncement, fetchActivePersonalMessage, fetchAppConfig, fetchUserProfile, ensureUserTier, fetchUserTier, fetchCampaignJoinInfo, fetchTierDefinition } from './supabase.js';
-import { showNotification, fireConfetti } from './modals.js';
+import { showNotification, fireConfetti } from './modals.js?v=20260501c';
 import { isAdminConfigured, isAdminEmail, isAdminMode, activateAdminMode, deactivateAdminMode, showAdminPassphraseModal, hasAdminPromptDismissed, clearAdminPromptDismissed } from './admin.js';
 
 // Expose toggleVictoryRoster for onclick handlers in player cards
